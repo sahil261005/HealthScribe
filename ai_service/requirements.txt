@@ -1,0 +1,27 @@
+# FastAPI Core
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+requests
+
+# Database
+psycopg2-binary
+
+# Google Gemini (Direct SDK for image extraction)
+google-generativeai
+
+# LangChain for RAG Pipeline
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
+langchain-community>=0.0.10
+
+# Vector Store for Semantic Search
+chromadb>=0.4.22
+
+# Required for embeddings
+tiktoken
+
+# Testing
+pytest
+httpx

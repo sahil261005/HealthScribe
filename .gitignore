@@ -1,0 +1,64 @@
+# Environment files
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+media/
+
+# Node
+node_modules/
+.npm
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Misc
+*.bak
+*.tmp
+
+
+.gsd/
+.agent/
+.agents/
+_agent/
+_agents/
+STATE.md
+ARCHITECTURE.md
+ROADMAP.md
+JOURNAL.md
+SPEC.md
+STACK.md
+
+# AI Service Local Data
+chat_histories.json
+ai_service/chroma_db/
+chroma_db/
