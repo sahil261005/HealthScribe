@@ -1,9 +1,0 @@
-0000000000000000000000000000000000000000 cb4e5ec4a38367e25e0f70202a0b082e759d34e6 Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1777091400 +0530	commit (initial): Initial setup and Django backend initialization
-cb4e5ec4a38367e25e0f70202a0b082e759d34e6 0adace337da4a0d5a38182bc88687d9e81257f8f Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1777366800 +0530	commit: Frontend React Vite setup and base styling
-0adace337da4a0d5a38182bc88687d9e81257f8f 0487be99a3fbd5097ed36bb37516e85ae81f549e Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1777700700 +0530	commit: Database models, Auth API, and frontend login context
-0487be99a3fbd5097ed36bb37516e85ae81f549e 1d82a52f8c84428777901b907ab251cb73f933cf Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1777979700 +0530	commit: FastAPI AI Service initialization with Sarvam and Gemini extraction endpoints
-1d82a52f8c84428777901b907ab251cb73f933cf 1c23fab22e5ef3637f27db559d493929c86e1249 Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1778212200 +0530	commit: Integrate LangChain RAG pipeline and ChromaDB for vector storage
-1c23fab22e5ef3637f27db559d493929c86e1249 faabbe69e5d3c5f5ebf9b0e0439a92855920f3e2 Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1778485200 +0530	commit: Frontend Dashboard and Prescription Upload Modals
-faabbe69e5d3c5f5ebf9b0e0439a92855920f3e2 5982699e3659e54f4e730ba67d7cacf64fc79b2e Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1778667600 +0530	commit: Frontend Chat Interface for RAG queries
-5982699e3659e54f4e730ba67d7cacf64fc79b2e 793f08fbde201ba891770e43608c0941aaedc51f Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1778821200 +0530	commit: Add Multi-Doctor Comparison feature and AI discrepancy engine
-793f08fbde201ba891770e43608c0941aaedc51f 078d969612460ddfdd69cd9557e3dcbf3dabcfe8 Sahil Pawar <sahilpawar@Sahils-MacBook-Air.local> 1778920200 +0530	commit: Add Shareable QR Health Report and read-only UI
