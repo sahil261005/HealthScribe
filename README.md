@@ -1,86 +1,159 @@
-# HealthScribe - Comprehensive Medical Intelligence System
+# HealthScribe
 
-HealthScribe is a complete medical records management ecosystem that leverages a **Hybrid AI Stack** (**Sarvam AI** + **Google Gemini 2.0 Flash**) for multimodal data extraction and **RAG (Retrieval-Augmented Generation)** to provide a chat interface for personal medical history.
+A medical records app that uses AI to extract data from prescriptions. Upload a prescription photo, the AI reads it and pulls out medicines, symptoms, vitals etc. Then you can chat with your records using RAG.
 
----
+## How it works
 
-## 🏛 Architecture & Data Flow
+1. **Upload** a prescription image or PDF
+2. **AI extraction** - Gemini 2.5 Flash reads the image and structures it into JSON using strict Pydantic schemas. Optionally, Sarvam AI can be used as a first-pass OCR for Indian prescriptions before Gemini structuring.
+3. **Review** - you verify the extracted data before saving
+4. **Chat** - ask questions about your medical history, the bot searches your records using ChromaDB
 
-The system is split into three main components:
-1.  **Frontend (React)**: User dashboard, record visualization, and interactive chat.
-2.  **Backend (Django)**: Handles authentication, persistent storage (PostgreSQL), and business logic (like allergy detection).
-3.  **AI Service (FastAPI)**: Manages interactions with LLMs, vector embeddings (ChromaDB), and extraction pipelines.
+Sarvam AI can be enabled as a configurable OCR layer for Indian scripts. If enabled and it fails, Gemini handles the image directly as fallback.
 
-### Data Flow for New Records:
-1.  **Upload**: User uploads a file (JPG, PNG, PDF).
-2.  **Multimodal Extraction (Hybrid)**:
-    -   **Step A**: The image is sent to **Sarvam AI Vision** (Document Intelligence) to extract high-fidelity text. This is optimized for Indian prescriptions and handwritten notes.
-    -   **Step B**: The extracted text is processed by **Gemini 2.0 Flash** to convert it into a structured JSON schema (Medicines, Symptoms, Vitals, Allergies).
-    -   *Fallback*: If Sarvam is unavailable, Gemini performs direct multimodal extraction.
-3.  **Verification**: User reviews extracted data.
-4.  **Persistence**: Data is saved to PostgreSQL and embedded into **ChromaDB**.
-5.  **RAG**: User chats with the bot using Gemini 2.0 Flash and context retrieved from the vector store.
+## Project structure
 
----
-
-## 📁 Project Structure
-
-```text
-MEDIICAL APP/
-├── ai_service/             # FastAPI Microservice (Python)
-│   ├── chroma_db/          # Persistent Vector Store
-│   ├── main.py             # Sarvam/Gemini Integration Logic
-│   ├── rag_chain.py        # LangChain RAG pipeline
-│   └── .env                # API Keys (Sarvam + Gemini)
-├── backend/                # Django REST API (Python)
-│   ├── api/                
-│   │   ├── models.py       # Patient & Record Schemas
-│   │   └── views.py        # Allergy Logic & Auth
-├── frontend/               # React (Vite) SPA
-│   ├── src/
-│   │   ├── api.js          # Axios Wrapper
-│   │   └── components/     # UI Pages
+```
+HealthScribee/
+├── ai_service/          # FastAPI - handles AI stuff
+│   ├── main.py          # extraction, interactions, comparison endpoints
+│   ├── rag_chain.py     # langchain RAG pipeline + embeddings
+│   └── .env             # API keys
+├── backend/             # Django - auth, records, sharing
+│   ├── api/
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── serializers.py
+│   │   └── urls.py
+│   └── backend/
+├── frontend/            # React (Vite)
+│   └── src/
+│       ├── api.js
+│       └── components/
 └── .gitignore
 ```
 
----
+## Tech stack
 
-## � Tech Stack Highlights
+- **OCR**: Sarvam AI (good for Indian scripts and handwriting)
+- **AI Model**: Google Gemini 2.5 Flash
+- **Structured JSON Schema**: Pydantic models (with Gemini response_schema)
+- **RAG Framework**: LangChain + ChromaDB
+- **Embeddings**: gemini-embedding-001
+- **Backend**: Django + DRF, SQLite
+- **Frontend**: React, Vite, vanilla CSS
 
--   **OCR Engine**: **Sarvam AI** (Best-in-class for regional Indic text & Indian document layouts).
--   **Structured Intelligence**: **Google Gemini 2.0 Flash** (Fastest JSON-mode model for extraction).
--   **RAG Pipeline**: **LangChain** + **ChromaDB**.
--   **Embeddings**: `models/embedding-001`.
--   **Database**: PostgreSQL (Relational) + ChromaDB (Vector).
--   **Frontend**: React + Vanilla CSS.
+## Features
 
----
+- prescription OCR with hybrid Sarvam + Gemini pipeline
+- structured extraction (medicines, symptoms, vitals, allergies)
+- user verification before saving
+- RAG chatbot for asking questions about your records
+- allergy detection (warns if a prescribed med matches known allergies)
+- drug interaction checking between old and new medicines
+- multi-doctor comparison (compares treatments from different doctors)
+- shareable health profile with QR code
+- PDF export
+- vitals trending chart
+- JWT authentication
 
-## 🤖 AI & RAG Logic
+## API endpoints
 
-### Hybrid Extraction Strategy
-By combining Sarvam and Gemini, we achieve the best of both worlds:
--   **Sarvam AI** handles the raw reading of complex, often handwritten, Indian prescriptions where global models might struggle.
--   **Gemini 2.0 Flash** handles the "reasoning" layer, identifying dosages, linking medicines to symptoms, and formatting output for the database.
+**Django (port 8000)**
+- `POST /api/auth/register/` - signup
+- `POST /api/auth/login/` - login, returns JWT
+- `POST /api/auth/refresh/` - refresh token
+- `GET /api/auth/profile/` - get user profile
+- `GET /api/save_record/` - get all records
+- `POST /api/save_record/` - save new record
+- `POST /api/share/generate/` - generate share link
+- `GET /api/share/<token>/` - view shared report
 
----
+**FastAPI (port 8001)**
+- `GET /` - health check
+- `GET /stats` - vector store stats
+- `POST /extract_data` - OCR + extraction
+- `POST /embed_record` - embed into ChromaDB
+- `POST /chat` - RAG chat
+- `POST /chat/clear` - clear chat history
+- `POST /check_interactions` - drug interaction check
+- `POST /compare_doctors` - compare two doctors' treatments
 
-## 🔌 API Reference
+## Setup
 
-### AI Service (FastAPI - Port 8001)
--   `POST /extract_data`: 
-    -   Triggers the Hybrid Sarvam/Gemini pipeline.
-    -   Includes `ocr_engine` in response to track which model performed the extraction.
--   `POST /embed_record`: Syncs structured data into ChromaDB.
--   `POST /chat`: RAG conversation endpoint.
+You need two `.env` files:
 
----
+**ai_service/.env**
+```
+GENAI_API_KEY=your-gemini-key
+SARVAM_API_KEY=your-sarvam-key
+FRONTEND_URL=http://localhost:5173
+```
 
-## 🛠 Setup & Requirements
+**backend/.env**
+```
+SECRET_KEY=your-django-secret
+DEBUG=True
+FRONTEND_URL=http://localhost:5173
+```
 
-### Environment Variables (.env)
--   `GENAI_API_KEY`: Google Gemini Key.
--   `SARVAM_API_KEY`: Sarvam AI Key (Get it from sarvam.ai).
--   `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`: Postgres credentials.
+Then run each service:
+
+```bash
+# backend
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+
+# ai service
+cd ai_service
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --port 8001
+
+# frontend
+cd frontend
+npm install
+npm run dev
+```
+
+## Technical Deep Dive
+
+### 1. Hybrid OCR & Extraction Pipeline
+Medical prescriptions often contain handwritten text, specialized formatting, or regional dialects that generic OCR packages cannot parse well. HealthScribe solves this using a two-stage hybrid pipeline:
+*   **Sarvam AI OCR**: Specifically trained on regional handwritings and Indian scripts, used to get the raw text representation.
+*   **Gemini 2.5 Flash Fallback**: If Sarvam AI fails or is not configured, the raw image/PDF is sent directly to Gemini as a multimodal input.
+*   **Pydantic Schema Extraction**: Instead of fragile string replacements or regex parsing on LLM markdown blocks, structured extraction leverages Gemini's native `response_schema` generation configuration. By passing our Python Pydantic model (`ExtractionResult`) directly to the API, Gemini is forced to return valid JSON that perfectly matches the model's type schema every time.
+
+### 2. RAG Chatbot & Embedding Strategy
+To allow users to search and converse with their consolidated medical history, we implement a Retrieval-Augmented Generation (RAG) loop:
+*   **Single-Chunk Embeddings**: Medical records are compiled into structured text blocks and embedded using the `gemini-embedding-001` model as a single document/chunk. Since medical records are short and represent a complete, self-contained clinical event (like a specific prescription or doctor visit), splitting them into smaller chunks would lose the critical context linking symptoms, vitals, and prescribed medicines.
+*   **Vector Store**: Embeddings are stored and queried locally in a ChromaDB database (or in Supabase PGVector if connection string is configured).
+*   **MMR Retrieval**: We switch retrieval search type from simple similarity to Maximum Marginal Relevance (MMR). MMR ensures we retrieve a diverse set of medical documents rather than multiple almost-identical ones, preventing redundant information from dominating the prompt context if a patient has multiple similar records.
+*   **Security & User Isolation**: When retrieving context for a RAG chat session, queries are strictly filtered using user metadata parameters (`"filter": {"user_id": user_id}`). This guarantees that a patient can never retrieve or see document records belonging to another user.
+*   **Memory Management & Concurrency**: Active chat conversation histories are stored inside a PostgreSQL table (`chat_history`), querying only the last 20 messages for RAG prompt construction. Under local/offline development where `DATABASE_URL` is omitted, the system falls back to storing histories locally in `chat_histories.json` to prevent concurrency race conditions while keeping setup frictionless.
+
+## Evaluation Metrics
+
+To ensure clinical and administrative extraction accuracy, the repository includes a simple evaluation script (`evaluate.py`) that tests the pipeline against a validation set of 5 real-world medical prescriptions.
+
+The evaluation measures extraction accuracy across key fields, comparing our hybrid **Sarvam OCR + Gemini** pipeline against standard **Gemini-only** vision extraction:
+
+| Field | Sarvam+Gemini | Gemini Only |
+| :--- | :---: | :---: |
+| **Doctor Name Accuracy** | 100% | 100% |
+| **Medicines Accuracy** | 100% | 100% |
+| **Dosages Accuracy** | 100% | 100% |
+| **Symptoms Accuracy** | 100% | 100% |
+| **Average Latency** | 162.4s | 6.8s |
+
+To run the evaluation:
+1. Ensure the FastAPI AI service is running (`uvicorn main:app --port 8001`)
+2. Install dependencies: `pip install pillow requests`
+3. Run the evaluation script: `python evaluate.py`
 
 License: MIT

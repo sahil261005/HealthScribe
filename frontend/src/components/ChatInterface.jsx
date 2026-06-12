@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { aiService } from '../api';
 import { useAuth } from '../context/AuthContext';
-import { MessageCircle, X, Send, Trash2 } from 'lucide-react';
 
 const ChatInterface = () => {
     const { user } = useAuth();
@@ -13,7 +12,7 @@ const ChatInterface = () => {
     const [isWaiting, setIsWaiting] = useState(false);
     const messagesEndRef = useRef(null);
 
-    // scroll to bottom when new messages come in
+    // auto-scroll when new messages come in
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages, isWaiting]);
@@ -33,7 +32,7 @@ const ChatInterface = () => {
             });
             const answer = res.data.answer || 'No response from the assistant.';
             setChatMessages(prev => [...prev, { sender: 'bot', text: answer }]);
-        } catch (e) {
+        } catch {
             setChatMessages(prev => [...prev, { sender: 'bot', text: 'Connection error. Is the AI service running?' }]);
         } finally {
             setIsWaiting(false);
@@ -43,8 +42,8 @@ const ChatInterface = () => {
     const handleClearChat = async () => {
         try {
             await aiService.post('/chat/clear', { user_id: user?.id || 1 });
-        } catch (e) {
-            // not critical if this fails
+        } catch {
+            // not a big deal if clear fails
         }
         setChatMessages([{ sender: 'bot', text: 'Chat cleared. Ask me anything!' }]);
     };
@@ -53,11 +52,10 @@ const ChatInterface = () => {
         if (e.key === 'Enter') handleSendMessage();
     };
 
-    // show floating button when chat is closed
     if (!isChatOpen) {
         return (
             <button onClick={() => setIsChatOpen(true)} className="chat-fab">
-                <MessageCircle size={22} />
+                💬
             </button>
         );
     }
@@ -69,12 +67,12 @@ const ChatInterface = () => {
                     <span className="chat-bot-name">HealthScribe Assistant</span>
                     <span className="chat-bot-status">{user?.username}</span>
                 </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
+                <div className="chat-header-actions">
                     <button onClick={handleClearChat} className="btn-close" title="Clear chat">
-                        <Trash2 size={15} />
+                        Clear
                     </button>
                     <button onClick={() => setIsChatOpen(false)} className="btn-close" title="Close">
-                        <X size={18} />
+                        ✕
                     </button>
                 </div>
             </div>
@@ -88,9 +86,9 @@ const ChatInterface = () => {
 
                 {isWaiting && (
                     <div className="message-bubble bot-message">
-                        <span className="typing-dot" style={{ animationDelay: '0ms' }}></span>
-                        <span className="typing-dot" style={{ animationDelay: '200ms' }}></span>
-                        <span className="typing-dot" style={{ animationDelay: '400ms' }}></span>
+                        <span className="typing-dot typing-dot-1"></span>
+                        <span className="typing-dot typing-dot-2"></span>
+                        <span className="typing-dot typing-dot-3"></span>
                     </div>
                 )}
 
@@ -111,7 +109,7 @@ const ChatInterface = () => {
                     disabled={isWaiting || !userInput.trim()}
                     className="btn-send"
                 >
-                    <Send size={16} />
+                    →
                 </button>
             </div>
         </div>

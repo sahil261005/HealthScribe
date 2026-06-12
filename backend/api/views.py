@@ -4,13 +4,54 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import MedicalRecord, HealthEntity, UserProfile
+from .models import MedicalRecord, HealthEntity, UserProfile, ShareableLink
 from .serializers import UserRegistrationSerializer, UserProfileSerializer
 import requests
 import os
 
-# using logging instead of print so we get timestamps and stuff
 logger = logging.getLogger("api")
+
+
+def serialize_record(record):
+    # grab all entities for this record
+    all_entities = record.entities.all()
+    symptoms_list = []
+    medicines_list = []
+    vitals_list = []
+    allergies_list = []
+
+    # sort by type
+    for entity in all_entities:
+        if entity.type == 'SYMPTOM':
+            symptoms_list.append(entity.name)
+        elif entity.type == 'MEDICINE':
+            medicine_info = {
+                "name": entity.name,
+                "dosage": entity.value,
+                "effectiveness": entity.effectiveness,
+                "reason": entity.related_symptom.name if entity.related_symptom else ""
+            }
+            medicines_list.append(medicine_info)
+        elif entity.type == 'VITAL':
+            vital_info = {
+                "name": entity.name,
+                "value": entity.value
+            }
+            vitals_list.append(vital_info)
+        elif entity.type == 'ALLERGY':
+            allergies_list.append(entity.name)
+
+    return {
+        "id": record.id,
+        "date": record.upload_date,
+        "category": record.category,
+        "doctor_name": record.doctor_name,
+        "symptoms": symptoms_list,
+        "medicines": medicines_list,
+        "vitals": vitals_list,
+        "allergies": allergies_list,
+    }
+
 
 
 class RegisterView(APIView):
@@ -46,16 +87,14 @@ class ProfileView(APIView):
 
     def get(self, request):
         try:
-            user_profile, was_created = UserProfile.objects.get_or_create(
-                user=request.user
-            )
-            serializer = UserProfileSerializer(user_profile)
+            profile, _ = UserProfile.objects.get_or_create(user=request.user)
+            serializer = UserProfileSerializer(profile)
             return Response(serializer.data)
 
-        except Exception as error:
-            logger.exception("Failed to fetch profile for user %s: %s", request.user.username, error)
+        except Exception as e:
+            logger.exception("profile fetch failed for %s: %s", request.user.username, e)
             return Response(
-                {"error": "profile_fetch_failed", "message": str(error)},
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -64,353 +103,298 @@ class SaveRecordView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """returns all medical records for the logged in user
-        groups them with their symptoms, medicines, vitals etc"""
+        # fetch all records for this user
         try:
-            current_user = request.user
-            all_records = MedicalRecord.objects.filter(user=current_user).prefetch_related('entities')
-            response_data = []
+            records = MedicalRecord.objects.filter(user=request.user).prefetch_related('entities')
+            result = []
+            for rec in records:
+                result.append(serialize_record(rec))
+            return Response(result)
 
-            for single_record in all_records:
-                all_entities = single_record.entities.all()
-                symptoms_list = []
-                medicines_list = []
-                vitals_list = []
-                allergies_list = []
-
-                # sort each entity into the right list based on its type
-                for entity in all_entities:
-                    if entity.type == 'SYMPTOM':
-                        symptoms_list.append(entity.name)
-                    elif entity.type == 'MEDICINE':
-                        medicine_info = {
-                            "name": entity.name,
-                            "dosage": entity.value,
-                            "effectiveness": entity.effectiveness
-                        }
-                        medicines_list.append(medicine_info)
-                    elif entity.type == 'VITAL':
-                        vital_info = {
-                            "name": entity.name,
-                            "value": entity.value
-                        }
-                        vitals_list.append(vital_info)
-                    elif entity.type == 'ALLERGY':
-                        allergies_list.append(entity.name)
-
-                record_data = {
-                    "id": single_record.id,
-                    "date": single_record.upload_date,
-                    "category": single_record.category,
-                    "doctor_name": single_record.doctor_name,
-                    "symptoms": symptoms_list,
-                    "medicines": medicines_list,
-                    "vitals": vitals_list,
-                    "allergies": allergies_list,
-                }
-                response_data.append(record_data)
-
-            return Response(response_data)
-
-        except Exception as error:
-            logger.exception("Failed to fetch records for user %s: %s", request.user.username, error)
+        except Exception as e:
+            logger.exception("records fetch failed for %s: %s", request.user.username, e)
             return Response(
-                {"error": "records_fetch_failed", "message": str(error)},
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     def post(self, request):
-        """saves the verified medical data after user reviews what the AI extracted.
-        also checks if any new medicines conflict with known allergies
-        and syncs everything to the vector database for the chatbot"""
+        # save a new record or update existing one
         try:
-            incoming_data = request.data
-            current_user = request.user
+            data = request.data
+            user = request.user
 
-            # make sure the client actually sent the data
-            verified_data = incoming_data.get('verified_data')
+            verified_data = data.get('verified_data')
             if verified_data is None:
                 return Response(
                     {"error": "missing_data", "message": "'verified_data' field is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            record_id = incoming_data.get('record_id')
-            medical_record = None
+            record_id = data.get('record_id')
+            record = None
 
             if record_id:
-                # updating an existing record
+                # updating existing record
                 try:
-                    medical_record = MedicalRecord.objects.get(id=record_id, user=current_user)
+                    record = MedicalRecord.objects.get(id=record_id, user=user)
                 except MedicalRecord.DoesNotExist:
                     return Response(
-                        {"error": "record_not_found", "message": f"Record {record_id} not found for this user."},
+                        {"error": "record_not_found", "message": f"Record {record_id} not found."},
                         status=status.HTTP_404_NOT_FOUND,
                     )
             else:
-                # creating a new record
-                symptoms_from_ai = verified_data.get('symptoms', [])
+                # new record
+                symptoms_list = verified_data.get('symptoms', [])
 
-                # decide the category based on whether there are symptoms
-                record_category = 'General Checkup'
-                if len(symptoms_from_ai) > 0:
-                    record_category = 'Consultation'
+                category = 'General Checkup'
+                if len(symptoms_list) > 0:
+                    category = 'Consultation'
 
-                medical_record = MedicalRecord.objects.create(
-                    user=current_user,
-                    category=record_category,
+                record = MedicalRecord.objects.create(
+                    user=user,
+                    category=category,
                     doctor_name=verified_data.get('doctor_name', '')
                 )
 
-            medicines_list = verified_data.get('medicines', [])
-            symptoms_list = verified_data.get('symptoms', [])
-            vitals_dict = verified_data.get('vitals', {})
-            allergies_list = verified_data.get('allergies', [])
+            medicines = verified_data.get('medicines', [])
+            symptoms = verified_data.get('symptoms', [])
+            vitals = verified_data.get('vitals', {})
+            allergies = verified_data.get('allergies', [])
 
-            # get the users known allergies so we can check for conflicts
-            user_profile, was_created = UserProfile.objects.get_or_create(user=current_user)
-            known_allergies_list = []
-            if user_profile.known_allergies:
-                known_allergies_list = user_profile.known_allergies.split(',')
+            # check against known allergies
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            known_allergies = []
+            if profile.known_allergies:
+                known_allergies = profile.known_allergies.split(',')
 
-            warning_messages = []
-            symptom_name_to_object = {}
+            warnings = []
+            symptom_map = {}
 
-            # save symptoms first so we can link medicines to them
-            for symptom_name in symptoms_list:
-                new_symptom = HealthEntity.objects.create(
-                    record=medical_record,
+            for s in symptoms:
+                entity = HealthEntity.objects.create(
+                    record=record,
                     type='SYMPTOM',
-                    name=symptom_name
+                    name=s
                 )
-                symptom_name_to_object[symptom_name] = new_symptom
+                symptom_map[s] = entity
 
-            # save medicines and check for allergy conflicts
-            for medicine_item in medicines_list:
-                medicine_name = medicine_item.get('name', '')
-                medicine_dosage = medicine_item.get('dosage', '')
-                medicine_reason = medicine_item.get('reason', '')
+            # save medicines and check against allergies
+            for med in medicines:
+                name = med.get('name', '')
+                dosage = med.get('dosage', '')
+                reason = med.get('reason', '')
 
-                # skip medicines with no name (sometimes the AI returns empty ones)
-                if not medicine_name.strip():
-                    logger.warning("Skipping medicine with empty name in record %d", medical_record.id)
+                if not name.strip():
+                    logger.warning("skipping medicine with empty name in record %d", record.id)
                     continue
 
-                # try to link this medicine to a symptom if the reason matches
-                linked_symptom = None
-                if medicine_reason in symptom_name_to_object:
-                    linked_symptom = symptom_name_to_object[medicine_reason]
+                linked = symptom_map.get(reason)
 
                 HealthEntity.objects.create(
-                    record=medical_record,
+                    record=record,
                     type='MEDICINE',
-                    name=medicine_name,
-                    value=medicine_dosage,
-                    related_symptom=linked_symptom
+                    name=name,
+                    value=dosage,
+                    related_symptom=linked
                 )
 
-                # check if this medicine matches any known allergies
-                for allergy in known_allergies_list:
+                for allergy in known_allergies:
                     if allergy.strip() == '':
                         continue
-                    if allergy.strip().lower() in medicine_name.lower():
-                        warning_text = f"Warning: Patient is allergic to {medicine_name}"
-                        warning_messages.append(warning_text)
+                    if allergy.strip().lower() in name.lower():
+                        warnings.append(f"Warning: Patient is allergic to {name}")
                         break
 
-            # save vitals
-            for vital_name, vital_value in vitals_dict.items():
+            for vital_name, vital_value in vitals.items():
                 HealthEntity.objects.create(
-                    record=medical_record,
+                    record=record,
                     type='VITAL',
                     name=vital_name,
                     value=vital_value
                 )
 
-            # save allergies as health entities too
-            for allergy_name in allergies_list:
+            for allergy_name in allergies:
                 HealthEntity.objects.create(
-                    record=medical_record,
+                    record=record,
                     type='ALLERGY',
                     name=allergy_name
                 )
 
-            # check if the AI found any new allergies we didnt know about
-            # if so, add them to the users profile automaticaly
-            found_new_allergy = False
-            for allergy_name in allergies_list:
-                is_already_known = False
-                for existing_allergy in known_allergies_list:
-                    if existing_allergy.strip().lower() == allergy_name.strip().lower():
-                        is_already_known = True
-                        break
-
-                if not is_already_known:
-                    if user_profile.known_allergies:
-                        user_profile.known_allergies = user_profile.known_allergies + ',' + allergy_name
+            # add any new allergies to profile
+            changed = False
+            for allergy_name in allergies:
+                already_known = any(
+                    a.strip().lower() == allergy_name.strip().lower()
+                    for a in known_allergies
+                )
+                if not already_known:
+                    if profile.known_allergies:
+                        profile.known_allergies += ',' + allergy_name
                     else:
-                        user_profile.known_allergies = allergy_name
-                    found_new_allergy = True
+                        profile.known_allergies = allergy_name
+                    changed = True
 
-            if found_new_allergy:
-                user_profile.save()
-                logger.info("Updated allergies for user %s: %s", current_user.username, user_profile.known_allergies)
+            if changed:
+                profile.save()
+                logger.info("updated allergies for %s: %s", user.username, profile.known_allergies)
 
-            # try to sync this record to the vector store for the chatbot
-            # if this fails its not a big deal, the record is still saved in the db
+            # send to AI service for vector embedding
             try:
-                ai_service_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+                ai_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
 
-                medicines_for_embedding = []
-                for medicine_item in medicines_list:
-                    medicines_for_embedding.append({
-                        "name": medicine_item.get("name", ""),
-                        "dosage": medicine_item.get("dosage", ""),
-                        "reason": medicine_item.get("reason", "")
+                meds_payload = []
+                for med in medicines:
+                    meds_payload.append({
+                        "name": med.get("name", ""),
+                        "dosage": med.get("dosage", ""),
+                        "reason": med.get("reason", "")
                     })
 
                 embed_payload = {
-                    "record_id": medical_record.id,
-                    "user_id": current_user.id,
-                    "category": medical_record.category,
-                    "upload_date": str(medical_record.upload_date),
-                    "symptoms": symptoms_list,
-                    "medicines": medicines_for_embedding,
-                    "vitals": vitals_dict,
-                    "allergies": allergies_list
+                    "record_id": record.id,
+                    "user_id": user.id,
+                    "category": record.category,
+                    "upload_date": str(record.upload_date),
+                    "symptoms": symptoms,
+                    "medicines": meds_payload,
+                    "vitals": vitals,
+                    "allergies": allergies
                 }
 
-                embed_response = requests.post(
-                    f"{ai_service_url}/embed_record",
+                resp = requests.post(
+                    f"{ai_url}/embed_record",
                     json=embed_payload,
                     timeout=10
                 )
 
-                if embed_response.status_code == 200:
-                    logger.info("Embedded record %d into vector store.", medical_record.id)
+                if resp.status_code == 200:
+                    logger.info("embedded record %d", record.id)
                 else:
-                    logger.warning("Failed to embed record %d: HTTP %d", medical_record.id, embed_response.status_code)
+                    logger.warning("embed failed for record %d: %d", record.id, resp.status_code)
 
-            except requests.exceptions.RequestException as embed_error:
-                logger.warning("Could not reach AI service for embedding: %s", embed_error)
+            except requests.exceptions.RequestException as e:
+                logger.warning("could not reach AI service: %s", e)
 
-            # --- NEW: Drug Interaction Checker ---
+            # check drug interactions with past medicines
             try:
-                # get all past medicines for this user (excluding the ones from the current record)
-                past_medicine_entities = HealthEntity.objects.filter(
-                    record__user=current_user, 
+                past_meds = HealthEntity.objects.filter(
+                    record__user=user,
                     type='MEDICINE'
-                ).exclude(record=medical_record)
-                
-                past_medicines = [med.name for med in past_medicine_entities]
-                new_medicines = [med.get('name') for med in medicines_list if med.get('name')]
-                
-                if past_medicines and new_medicines:
-                    ai_service_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
-                    interaction_payload = {
-                        "current_medicines": list(set(past_medicines)),
-                        "new_medicines": new_medicines
-                    }
-                    interaction_response = requests.post(
-                        f"{ai_service_url}/check_interactions",
-                        json=interaction_payload,
+                ).exclude(record=record)
+
+                past_names = [m.name for m in past_meds]
+                new_names = [m.get('name') for m in medicines if m.get('name')]
+
+                if past_names and new_names:
+                    ai_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+                    resp = requests.post(
+                        f"{ai_url}/check_interactions",
+                        json={
+                            "current_medicines": list(set(past_names)),
+                            "new_medicines": new_names
+                        },
                         timeout=15
                     )
-                    
-                    if interaction_response.status_code == 200:
-                        interaction_data = interaction_response.json()
-                        if interaction_data.get("warnings"):
-                            warning_messages.extend(interaction_data["warnings"])
-                            logger.warning("Drug interactions found for user %s: %s", current_user.username, interaction_data["warnings"])
-            except Exception as interaction_error:
-                logger.warning("Failed to check drug interactions: %s", interaction_error)
-            # -------------------------------------
+
+                    if resp.status_code == 200:
+                        interaction_warnings = resp.json().get("warnings", [])
+                        if interaction_warnings:
+                            warnings.extend(interaction_warnings)
+                            logger.warning("drug interactions for %s: %s", user.username, interaction_warnings)
+            except Exception as e:
+                logger.warning("interaction check failed: %s", e)
 
             return Response(
-                {"message": "Data saved successfully", "warnings": warning_messages},
+                {"message": "Data saved successfully", "warnings": warnings},
                 status=status.HTTP_201_CREATED
             )
 
-        except Exception as error:
-            logger.exception("save_record failed for user %s: %s", request.user.username, error)
+        except Exception as e:
+            logger.exception("save_record failed for %s: %s", request.user.username, e)
             return Response(
-                {"error": "save_failed", "message": str(error)},
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def delete(self, request):
+        # deletes a medical record and alerts AI service to clean up vector store
+        try:
+            record_id = request.query_params.get('id')
+            if not record_id:
+                return Response(
+                    {"error": "Record ID is required."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # verify the record exists and belongs to this user
+            record = MedicalRecord.objects.get(id=record_id, user=request.user)
+            record.delete()
+
+            # call AI service to drop the high-dimensional embedding
+            try:
+                ai_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+                requests.post(
+                    f"{ai_url}/delete_record",
+                    json={"record_id": int(record_id)},
+                    timeout=5
+                )
+            except Exception as e:
+                logger.warning("failed to notify AI service of record deletion: %s", e)
+
+            return Response({"message": "Record deleted successfully."})
+
+        except MedicalRecord.DoesNotExist:
+            return Response(
+                {"error": "Record not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.exception("delete failed: %s", e)
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class GenerateShareLinkView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from .models import ShareableLink
         try:
-            link, created = ShareableLink.objects.get_or_create(user=request.user)
+            link, _ = ShareableLink.objects.get_or_create(user=request.user)
             return Response({"token": str(link.token)}, status=status.HTTP_200_OK)
-        except Exception as error:
-            logger.exception("Failed to generate share link for user %s: %s", request.user.username, error)
+        except Exception as e:
+            logger.exception("share link failed for %s: %s", request.user.username, e)
             return Response(
-                {"error": "share_link_failed", "message": str(error)},
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
 class SharedReportView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, token):
-        from .models import ShareableLink
         try:
             link = ShareableLink.objects.get(token=token)
-            target_user = link.user
-            
-            all_records = MedicalRecord.objects.filter(user=target_user).prefetch_related('entities')
-            response_data = []
+            owner = link.user
 
-            for single_record in all_records:
-                all_entities = single_record.entities.all()
-                symptoms_list = []
-                medicines_list = []
-                vitals_list = []
-                allergies_list = []
-
-                for entity in all_entities:
-                    if entity.type == 'SYMPTOM':
-                        symptoms_list.append(entity.name)
-                    elif entity.type == 'MEDICINE':
-                        medicines_list.append({
-                            "name": entity.name,
-                            "dosage": entity.value,
-                            "effectiveness": entity.effectiveness
-                        })
-                    elif entity.type == 'VITAL':
-                        vitals_list.append({
-                            "name": entity.name,
-                            "value": entity.value
-                        })
-                    elif entity.type == 'ALLERGY':
-                        allergies_list.append(entity.name)
-
-                record_data = {
-                    "id": single_record.id,
-                    "date": single_record.upload_date,
-                    "category": single_record.category,
-                    "doctor_name": single_record.doctor_name,
-                    "symptoms": symptoms_list,
-                    "medicines": medicines_list,
-                    "vitals": vitals_list,
-                    "allergies": allergies_list,
-                }
-                response_data.append(record_data)
+            records = MedicalRecord.objects.filter(user=owner).prefetch_related('entities')
+            result = []
+            for rec in records:
+                result.append(serialize_record(rec))
 
             return Response({
-                "patient_name": target_user.username,
-                "records": response_data
+                "patient_name": owner.username,
+                "records": result
             })
-            
+
         except ShareableLink.DoesNotExist:
-            return Response({"error": "invalid_token", "message": "This share link is invalid or has expired."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as error:
-            logger.exception("Failed to fetch shared report: %s", error)
+            return Response({"error": "invalid or expired link"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("shared report failed: %s", e)
             return Response(
-                {"error": "shared_report_failed", "message": str(error)},
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

@@ -1,16 +1,14 @@
 import axios from 'axios';
 
-// we have two backend services so we need two axios instances
-// 1. django (port 8000) - handles users and data storage
-// 2. fastapi (port 8001) - handles AI stuff like extraction and chatbot
+// two separate API clients because we have two backends:
+// - Django on port 8000 for auth, records, etc.
+// - FastAPI on port 8001 for AI stuff (extraction, chat, embeddings)
 
-// django backend api
 const djangoBackendApi = axios.create({
-    baseURL: 'http://localhost:8000/api/',
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/',
 });
 
-// this interceptor automatically adds the JWT token to every request
-// so we dont have to manually add it in every component
+// attach the JWT token to every request if we have one
 djangoBackendApi.interceptors.request.use(
     (config) => {
         const accessToken = localStorage.getItem('access_token');
@@ -26,9 +24,7 @@ djangoBackendApi.interceptors.request.use(
     }
 );
 
-// handle expired tokens
-// right now we just let the error go through and AuthContext handles logging out
-// TODO: could add automatic token refresh here later
+// log when auth fails (usually means the token expired)
 djangoBackendApi.interceptors.response.use(
     (response) => {
         return response;
@@ -42,9 +38,9 @@ djangoBackendApi.interceptors.response.use(
     }
 );
 
-// fastapi ai service - doesnt need auth since its an internal service
+// AI service doesn't need auth headers for now (it's internal)
 export const aiService = axios.create({
-    baseURL: 'http://localhost:8001/',
+    baseURL: import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8001/',
 });
 
 export default djangoBackendApi;

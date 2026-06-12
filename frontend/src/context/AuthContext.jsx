@@ -1,12 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import djangoBackendApi from '../api';
 
-// auth context - provides login/register/logout to the whole app
-// stores jwt tokens in localStorage so users stay logged in after closing browser
+// context for managing login state across the app
+// stores JWT tokens in localStorage so users stay logged in on refresh
 
 const AuthContext = createContext(null);
 
-// custom hook so components can easily access auth stuff
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -20,8 +19,7 @@ export const AuthProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // check if theres already a saved token when the app loads
-    // if the token is still valid we auto-login the user
+    // on mount, check if we have a saved token and if it's still valid
     useEffect(() => {
         const checkExistingAuth = async () => {
             const savedToken = localStorage.getItem('access_token');
@@ -34,10 +32,9 @@ export const AuthProvider = ({ children }) => {
                         }
                     });
 
-                    // token works, set the user
                     setUser(response.data);
-                } catch (error) {
-                    // token is expired or invalid, clear everything
+                } catch {
+                    // token is bad, clear it
                     console.log('Saved token is invalid, clearing...');
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
@@ -50,7 +47,6 @@ export const AuthProvider = ({ children }) => {
         checkExistingAuth();
     }, []);
 
-    // register a new user and auto-login them
     const register = async (username, email, password) => {
         setError(null);
 
@@ -61,7 +57,6 @@ export const AuthProvider = ({ children }) => {
                 password
             });
 
-            // save tokens so they stay logged in
             const { tokens, user: userData } = response.data;
             localStorage.setItem('access_token', tokens.access);
             localStorage.setItem('refresh_token', tokens.refresh);
@@ -83,12 +78,10 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // login an existing user
     const login = async (username, password) => {
         setError(null);
 
         try {
-            // first get the jwt tokens
             const tokenResponse = await djangoBackendApi.post('auth/login/', {
                 username,
                 password
@@ -99,7 +92,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('access_token', access);
             localStorage.setItem('refresh_token', refresh);
 
-            // then fetch their profile
+            // grab the user's profile now that we're authenticated
             const profileResponse = await djangoBackendApi.get('auth/profile/', {
                 headers: {
                     Authorization: `Bearer ${access}`
@@ -118,7 +111,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // logout - just clear everything
     const logout = () => {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
@@ -130,7 +122,6 @@ export const AuthProvider = ({ children }) => {
         return localStorage.getItem('access_token');
     };
 
-    // all the stuff we want to share with the rest of the app
     const authContextValue = {
         user,
         isLoading,

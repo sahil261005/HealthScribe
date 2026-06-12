@@ -1,14 +1,11 @@
-# Django Backend Dependencies
 django>=5.0
 djangorestframework>=3.14
-djangorestframework-simplejwt>=5.3  # JWT authentication
+djangorestframework-simplejwt>=5.3
 django-cors-headers>=4.3
-psycopg2-binary>=2.9
 python-dotenv>=1.0
 gunicorn>=21.0
 whitenoise>=6.6
-requests>=2.31  # For calling AI service to embed records
-
-# Development
+requests>=2.31
 pillow>=10.0
-
+psycopg2-binary>=2.9.9
+dj-database-url>=2.1.0

@@ -5,7 +5,6 @@ import UploadModal from './components/UploadModal';
 import ChatInterface from './components/ChatInterface';
 import AuthPage from './components/AuthPage';
 import SharedReport from './components/SharedReport';
-import { LogOut, Loader2 } from 'lucide-react';
 import './App.css';
 
 function AppContent() {
@@ -13,7 +12,7 @@ function AppContent() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
-    // when a record is uploaded, bump the key so dashboard refetches data
+    // bump the key to force dashboard to refetch after upload
     const handleUploadSuccess = () => {
         setDashboardRefreshKey(previousKey => previousKey + 1);
     };
@@ -21,19 +20,16 @@ function AppContent() {
     const openUploadModal = () => setIsUploadModalOpen(true);
     const closeUploadModal = () => setIsUploadModalOpen(false);
 
-    // show spinner while checking if user is already logged in
     if (isLoading) {
         return (
             <div className="loading-screen">
                 <div className="loading-content">
-                    <Loader2 size={40} />
-                    <p style={{ marginTop: '12px', fontSize: '15px' }}>Loading HealthScribe...</p>
+                    <p className="loading-text">Loading HealthScribe...</p>
                 </div>
             </div>
         );
     }
 
-    // not logged in, show auth page
     if (!isAuthenticated) {
         return <AuthPage />;
     }
@@ -41,7 +37,7 @@ function AppContent() {
     return (
         <div className="app-screen">
             <nav className="navbar">
-                <h1 className="brand-title">HealthScribe</h1>
+                <h1 className="brand-title" onClick={() => window.location.href = '/'}>HealthScribe</h1>
                 
                 <div className="nav-actions">
                     <div className="user-profile">
@@ -56,8 +52,7 @@ function AppContent() {
                     </button>
                     
                     <button onClick={logout} className="btn-logout" title="Logout">
-                        <LogOut size={18} />
-                        <span>Logout</span>
+                        Logout
                     </button>
                 </div>
             </nav>
@@ -78,7 +73,7 @@ function AppContent() {
 }
 
 function App() {
-    // Check if this is a shared report link
+    // check if someone is visiting via a share link
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
 

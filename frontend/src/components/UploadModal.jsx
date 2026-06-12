@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { aiService } from '../api';
 import api from '../api';
-import { X, Upload, Check, Pill, Stethoscope, Activity, FileText as FileTextIcon, Loader2, AlertTriangle } from 'lucide-react';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [selectedFile, setSelectedFile] = useState(null);
@@ -18,7 +17,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         setErrorMessage('');
     };
 
-    // sends the file to the AI service for extraction
+    // send the file to the AI service for extraction
     const handleExtractData = async () => {
         if (!selectedFile) {
             setErrorMessage('Please select a file first.');
@@ -37,14 +36,14 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 return;
             }
             setExtractedData(response.data);
-        } catch (error) {
+        } catch {
             setErrorMessage('Failed to extract data. Is the AI service running?');
         } finally {
             setIsLoading(false);
         }
     };
 
-    // saves the verified data to the django backend
+    // save the verified data to django
     const handleSaveData = async () => {
         if (!extractedData) return;
         setIsLoading(true);
@@ -55,14 +54,14 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
             }
             onUploadSuccess();
             onClose();
-        } catch (error) {
+        } catch {
             setErrorMessage('Failed to save record.');
         } finally {
             setIsLoading(false);
         }
     };
 
-    // handlers for editing medicines in the verification step
+    // handlers for editing the extracted medicines before saving
     const handleMedicineChange = (idx, field, val) => {
         const updatedMeds = [...extractedData.medicines];
         updatedMeds[idx][field] = val;
@@ -105,16 +104,14 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     return (
         <div className="modal-overlay">
             <div className="modal-container">
-                {/* header */}
                 <div className="modal-header">
                     <div>
                         <h2 className="modal-title">Upload Medical Record</h2>
                         <p className="modal-subtitle">Upload a prescription or report to extract data</p>
                     </div>
-                    <button onClick={onClose} className="btn-close"><X size={22} /></button>
+                    <button onClick={onClose} className="btn-close">✕</button>
                 </div>
                 
-                {/* two column layout */}
                 <div className="modal-body">
                     {/* left side - file upload */}
                     <div className="upload-column">
@@ -127,11 +124,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 id="file-upload"
                             />
                             <label htmlFor="file-upload" className="cursor-pointer">
-                                <Upload
-                                    size={28}
-                                    color={selectedFile ? '#27ae60' : '#999'}
-                                    style={{ display: 'block', margin: '0 auto 8px' }}
-                                />
                                 <p className="text-sm">
                                     {selectedFile ? selectedFile.name : 'Click to upload prescription'}
                                 </p>
@@ -142,7 +134,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                             <div className="preview-container">
                                 {selectedFile.type === 'application/pdf' ? (
                                     <div className="text-center">
-                                        <FileTextIcon size={40} color="#c0392b" />
                                         <p className="text-sm mt-2">PDF Document Ready</p>
                                     </div>
                                 ) : (
@@ -158,39 +149,31 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                         <button
                             onClick={handleExtractData}
                             disabled={isLoading || !selectedFile}
-                            className="btn-upload"
-                            style={{ width: '100%', marginTop: '12px' }}
+                            className="btn-upload btn-extract-full"
                         >
-                            {isLoading ? (
-                                <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                            ) : (
-                                <Stethoscope size={18} />
-                            )}
-                            {' '}
                             {isLoading ? 'Processing...' : 'Extract Data'}
                         </button>
 
                         {errorMessage && (
-                            <div className="error-alert" style={{ marginTop: '12px' }}>
+                            <div className="error-alert error-alert-spaced">
                                 {errorMessage}
                             </div>
                         )}
                     </div>
 
-                    {/* right side - verify what the AI extracted */}
+                    {/* right side - verify extracted data */}
                     <div className="verify-column">
-                        <h3 className="section-title" style={{ marginBottom: '14px' }}>
-                            <Check size={18} color="#27ae60" /> Verify Extracted Data
+                        <h3 className="section-title verify-section-title">
+                            Verify Extracted Data
                         </h3>
                         
                         {extractedData ? (
                             <div>
                                 {/* doctor name */}
-                                <div className="input-row" style={{ marginBottom: '14px' }}>
-                                    <span className="text-sm" style={{ width: '90px', fontWeight: '500' }}>Doctor Name:</span>
+                                <div className="input-row doctor-name-row">
+                                    <span className="text-sm doctor-name-label">Doctor Name:</span>
                                     <input 
-                                        className="mini-input" 
-                                        style={{ flex: 1 }}
+                                        className="mini-input doctor-name-input" 
                                         value={extractedData.doctor_name || ''} 
                                         onChange={(e) => setExtractedData({ 
                                             ...extractedData, 
@@ -203,7 +186,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 {/* medicines */}
                                 <div className="section-box section-blue">
                                     <div className="section-header">
-                                        <h4 className="section-title"><Pill size={14} /> Medicines</h4>
+                                        <h4 className="section-title">Medicines</h4>
                                         <button onClick={handleAddMedicine} className="btn-add">+ Add</button>
                                     </div>
                                     {extractedData.medicines?.map((med, i) => (
@@ -215,14 +198,13 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                                 placeholder="Name"
                                             />
                                             <input
-                                                className="mini-input"
-                                                style={{ flex: '0 0 80px' }}
+                                                className="mini-input dosage-input"
                                                 value={med.dosage || ''}
                                                 onChange={(e) => handleMedicineChange(i, 'dosage', e.target.value)}
                                                 placeholder="Dosage"
                                             />
                                             <button onClick={() => handleRemoveMedicine(i)} className="btn-close">
-                                                <X size={14} />
+                                                ✕
                                             </button>
                                         </div>
                                     ))}
@@ -230,11 +212,11 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
                                 {/* vitals */}
                                 <div className="section-box section-green">
-                                    <h4 className="section-title"><Activity size={14} /> Vitals</h4>
-                                    <div className="input-row" style={{ flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+                                    <h4 className="section-title">Vitals</h4>
+                                    <div className="vitals-edit-grid">
                                         {Object.entries(extractedData.vitals || {}).map(([key, val]) => (
-                                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                <span className="text-sm" style={{ width: '60px', fontWeight: '500' }}>
+                                            <div key={key} className="vital-edit-item">
+                                                <span className="text-sm vital-edit-label">
                                                     {key}:
                                                 </span>
                                                 <input 
@@ -253,10 +235,10 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 {/* allergies */}
                                 <div className="section-box section-red">
                                     <div className="section-header">
-                                        <h4 className="section-title"><AlertTriangle size={14} /> Allergies</h4>
+                                        <h4 className="section-title">Allergies</h4>
                                         <button onClick={handleAddAllergy} className="btn-add">+ Add</button>
                                     </div>
-                                    <div className="vitals-row" style={{ marginTop: '8px', flexDirection: 'column' }}>
+                                    <div className="allergies-edit-list">
                                         {extractedData.allergies?.map((allergy, i) => (
                                             <div key={i} className="input-row">
                                                 <input
@@ -266,20 +248,19 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                                     placeholder="Allergy (e.g. Penicillin)"
                                                 />
                                                 <button onClick={() => handleRemoveAllergy(i)} className="btn-close">
-                                                    <X size={14} />
+                                                    ✕
                                                 </button>
                                             </div>
                                         ))}
                                         {(!extractedData.allergies || extractedData.allergies.length === 0) && (
-                                            <p className="text-sm" style={{ color: '#999' }}>No allergies detected.</p>
+                                            <p className="text-sm text-muted">No allergies detected.</p>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="empty-state" style={{ height: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                                <Stethoscope size={40} color="#ccc" />
-                                <p className="empty-text" style={{ marginTop: '12px' }}>
+                            <div className="empty-state empty-state-verify">
+                                <p className="empty-text empty-text-spaced">
                                     Extract data to see results here
                                 </p>
                             </div>
@@ -287,7 +268,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                     </div>
                 </div>
 
-                {/* footer buttons */}
                 <div className="modal-footer">
                     <button onClick={onClose} className="btn-cancel">Cancel</button>
                     <button
@@ -295,7 +275,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                         disabled={!extractedData || isLoading}
                         className="btn-save"
                     >
-                        <Check size={16} />
                         Verify & Save
                     </button>
                 </div>

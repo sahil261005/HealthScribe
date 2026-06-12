@@ -1,10 +1,9 @@
-"""
-Django settings for HealthScribe backend.
-"""
+
 
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import dj_database_url
 
 load_dotenv()
 
@@ -30,7 +29,7 @@ INSTALLED_APPS = [
     'api',
 ]
 
-# cors middleware needs to be first so it can add headers before other middleware runs
+# cors needs to go first
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -62,12 +61,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 
-# using sqlite for development, would switch to postgres for production
+# defaults to sqlite locally, uses postgres/supabase if DATABASE_URL is set in env
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+        ssl_require=not DEBUG
+    )
 }
 
 
@@ -100,27 +100,27 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# only allow requests from our frontend url
+# only allow our frontend
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [url.strip() for url in os.getenv('FRONTEND_URL', 'http://localhost:5173').split(',')]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# using JWT for authentication instead of sessions
+# jwt auth
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
 }
 
-# jwt token config
+# jwt config
 from datetime import timedelta
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 
-    # rotate refresh tokens when used so old ones cant be reused
+    # rotate tokens so old ones cant be reused
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 

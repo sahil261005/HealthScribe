@@ -1,16 +1,10 @@
-# Environment
 .env
-
-# Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
 venv/
 .venv/
-
-# IDE
 .idea/
 .vscode/
-
-# Vector Store (auto-generated)
 chroma_db/
-
+chat_histories.json

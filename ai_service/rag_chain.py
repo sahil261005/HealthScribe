@@ -1,5 +1,6 @@
 import os
 import json
+import psycopg2
 from dotenv import load_dotenv
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,14 +8,42 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import PGVector
 
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GENAI_API_KEY")
+CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
+CONNECTION_STRING = os.getenv("DATABASE_URL")
 
-CHROMA_PERSIST_DIRECTORY = os.path.join(os.path.dirname(__file__), "chroma_db")
- 
-# set up the embedding model (this is what converts text into vectors)
+
+# create chat_history table in postgres if it doesnt exist yet
+def init_chat_table():
+    if not CONNECTION_STRING:
+        return
+    try:
+        conn = psycopg2.connect(CONNECTION_STRING)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                sender VARCHAR(50) NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("chat_history table ready")
+    except Exception as e:
+        print(f"couldnt create chat_history table: {e}")
+
+init_chat_table()
+
+
+# embedding model - using gemini embedding
 embeddings_model = None
 if GEMINI_API_KEY:
     embeddings_model = GoogleGenerativeAIEmbeddings(
@@ -22,7 +51,7 @@ if GEMINI_API_KEY:
         google_api_key=GEMINI_API_KEY
     )
 
-# the chat model for generating responses
+# llm for chat
 chat_model = None
 if GEMINI_API_KEY:
     chat_model = ChatGoogleGenerativeAI(
@@ -31,9 +60,7 @@ if GEMINI_API_KEY:
         temperature=0.3,
     )
 
-# this is the prompt template that tells gemini how to behave
-# tried a bunch of different ones, this one works best for medical stuff
-MEDICAL_ASSISTANT_TEMPLATE = """You are a helpful medical assistant for the HealthScribe app.
+PROMPT_TEMPLATE = """You are a helpful medical assistant for the HealthScribe app.
 
 IMPORTANT RULES:
 1. You are NOT a doctor. Do not provide medical advice or diagnoses.
@@ -53,147 +80,213 @@ PATIENT'S QUESTION: {question}
 
 YOUR RESPONSE:"""
 
-MEDICAL_PROMPT = ChatPromptTemplate.from_template(MEDICAL_ASSISTANT_TEMPLATE)
+MEDICAL_PROMPT = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
 
-# path where we save chat history so it doesnt get lost when server restarts
-CHAT_HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
 
 
-def load_chat_histories():
-    """load saved chat histories from disk"""
-    if os.path.exists(CHAT_HISTORY_FILE):
+# chat history helpers - uses postgres if available, otherwise json file
+
+def load_histories():
+    if os.path.exists(HISTORY_FILE):
         try:
-            with open(CHAT_HISTORY_FILE, "r") as f:
+            with open(HISTORY_FILE, "r") as f:
                 return json.load(f)
-        except Exception:
+        except:
             return {}
     return {}
 
 
-def save_chat_histories(histories):
-    """save chat histories to disk so they persist between restarts"""
+def save_histories(data):
     try:
-        with open(CHAT_HISTORY_FILE, "w") as f:
-            json.dump(histories, f)
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(data, f)
     except Exception as e:
-        print(f"Failed to save history: {e}")
+        print(f"couldnt save history file: {e}")
 
 
-# load any existing chat histories when the module starts
-user_chat_histories = load_chat_histories()
+chat_histories = load_histories()
 
 
-def get_user_chat_history(user_id):
-    """get the chat history for a specific user, create empty list if new user"""
-    user_id_str = str(user_id)
-    if user_id_str not in user_chat_histories:
-        user_chat_histories[user_id_str] = []
-    return user_chat_histories[user_id_str]
+def get_history(user_id):
+    # try postgres first
+    if CONNECTION_STRING:
+        try:
+            conn = psycopg2.connect(CONNECTION_STRING)
+            cur = conn.cursor()
+            # get last 20 msgs, ordered oldest first so the conversation reads properly
+            cur.execute("""
+                SELECT sender, message FROM (
+                    SELECT sender, message, created_at FROM chat_history
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                ) sub ORDER BY created_at ASC
+            """, (str(user_id),))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            result = []
+            for sender, msg in rows:
+                result.append(f"{sender}: {msg}")
+            return result
+        except Exception as e:
+            print(f"postgres history error: {e}")
+
+    # fallback to json file
+    key = str(user_id)
+    if key not in chat_histories:
+        chat_histories[key] = []
+    return chat_histories[key]
 
 
-def add_to_chat_history(user_id, question, answer):
-    """add a new question/answer pair to the users chat history
-    we only keep the last 20 messages so it doesnt get too long"""
-    user_id_str = str(user_id)
-    history = get_user_chat_history(user_id_str)
+def add_message(user_id, question, answer):
+    if CONNECTION_STRING:
+        try:
+            conn = psycopg2.connect(CONNECTION_STRING)
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s)",
+                (str(user_id), "Human", question)
+            )
+            cur.execute(
+                "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s)",
+                (str(user_id), "Assistant", answer)
+            )
+            # cleanup old msgs so the table doesnt grow forever (keep last 20)
+            cur.execute("""
+                DELETE FROM chat_history
+                WHERE user_id = %s
+                AND id NOT IN (
+                    SELECT id FROM chat_history
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                )
+            """, (str(user_id), str(user_id)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"postgres add_message error: {e}")
+
+    # fallback to json
+    key = str(user_id)
+    history = get_history(key)
     history.append(f"Human: {question}")
     history.append(f"Assistant: {answer}")
 
-    # only keep last 20 messages otherwise context gets too big
     if len(history) > 20:
-        user_chat_histories[user_id_str] = history[-20:]
+        chat_histories[key] = history[-20:]
     else:
-        user_chat_histories[user_id_str] = history
+        chat_histories[key] = history
 
-    save_chat_histories(user_chat_histories)
+    save_histories(chat_histories)
 
 
 def clear_user_memory(user_id):
-    """clear chat history for a user (when they click the clear button)"""
-    user_id_str = str(user_id)
-    if user_id_str in user_chat_histories:
-        del user_chat_histories[user_id_str]
-        save_chat_histories(user_chat_histories)
+    if CONNECTION_STRING:
+        try:
+            conn = psycopg2.connect(CONNECTION_STRING)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM chat_history WHERE user_id = %s", (str(user_id),))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"postgres clear error: {e}")
+
+    key = str(user_id)
+    if key in chat_histories:
+        del chat_histories[key]
+        save_histories(chat_histories)
 
 
-def format_chat_history(user_id):
-    """turn the chat history list into a string for the prompt"""
-    history = get_user_chat_history(user_id)
+def format_history(user_id):
+    history = get_history(user_id)
     if not history:
         return "No previous conversation."
     return "\n".join(history)
 
 
-def get_or_create_vectorstore():
-    """get the chroma vector store, or create it if it doesnt exist yet"""
+# vector store - pgvector for supabase, chroma for local dev
+
+def get_vectorstore():
     if embeddings_model is None:
         return None
 
+    if CONNECTION_STRING:
+        try:
+            store = PGVector(
+                connection_string=CONNECTION_STRING,
+                embedding_function=embeddings_model,
+                collection_name="medical_records"
+            )
+            return store
+        except Exception as e:
+            print(f"pgvector error: {e}")
+            return None
+
+    # local chromadb fallback
     try:
-        vectorstore = Chroma(
-            persist_directory=CHROMA_PERSIST_DIRECTORY,
+        store = Chroma(
+            persist_directory=CHROMA_DIR,
             embedding_function=embeddings_model,
             collection_name="medical_records"
         )
-        return vectorstore
-    except Exception as error:
-        print(f"Error creating vector store: {error}")
+        return store
+    except Exception as e:
+        print(f"chroma error: {e}")
         return None
 
 
 def embed_medical_record(record_id, user_id, category, upload_date,
-                         symptoms, medicines, vitals, allergies):
-    """takes a medical record and embeds it into chromadb so the chatbot can search it later.
-    we build a text representation of the record and store it with metadata"""
-    vectorstore = get_or_create_vectorstore()
+                          symptoms, medicines, vitals, allergies):
+    """saves a medical record into the vector store for RAG search"""
 
-    if vectorstore is None:
+    store = get_vectorstore()
+    if store is None:
         return False
 
     try:
-        # build a text version of the record that makes sense for searching
-        text_parts = []
-        text_parts.append(f"Medical Record from {upload_date}")
-        text_parts.append(f"Category: {category}")
+        # build text from all the record fields
+        parts = []
+        parts.append(f"Medical Record from {upload_date}")
+        parts.append(f"Category: {category}")
 
-        if symptoms and len(symptoms) > 0:
-            symptoms_text = ", ".join(symptoms)
-            text_parts.append(f"Symptoms: {symptoms_text}")
+        if symptoms:
+            parts.append(f"Symptoms: {', '.join(symptoms)}")
 
-        if medicines and len(medicines) > 0:
-            medicine_lines = []
+        if medicines:
+            med_lines = []
             for med in medicines:
-                med_name = med.get("name", "Unknown")
-                med_dosage = med.get("dosage", "")
-                med_reason = med.get("reason", "")
+                line = med.get("name", "Unknown")
+                if med.get("dosage"):
+                    line += f" ({med['dosage']})"
+                if med.get("reason"):
+                    line += f" for {med['reason']}"
+                med_lines.append(line)
+            parts.append(f"Medicines: {'; '.join(med_lines)}")
 
-                med_text = f"{med_name}"
-                if med_dosage:
-                    med_text += f" ({med_dosage})"
-                if med_reason:
-                    med_text += f" for {med_reason}"
-
-                medicine_lines.append(med_text)
-
-            text_parts.append(f"Medicines: {'; '.join(medicine_lines)}")
-
-        # only add vitals that actually have values
-        if vitals and len(vitals) > 0:
-            vital_lines = []
+        if vitals:
+            vital_parts = []
             for name, value in vitals.items():
                 if value:
-                    vital_lines.append(f"{name}: {value}")
-            if vital_lines:
-                text_parts.append(f"Vitals: {', '.join(vital_lines)}")
+                    vital_parts.append(f"{name}: {value}")
+            if vital_parts:
+                parts.append(f"Vitals: {', '.join(vital_parts)}")
 
-        if allergies and len(allergies) > 0:
-            text_parts.append(f"Allergies mentioned: {', '.join(allergies)}")
+        if allergies:
+            parts.append(f"Allergies: {', '.join(allergies)}")
 
-        document_text = "\n".join(text_parts)
+        text = "\n".join(parts)
 
-        # create the document with metadata for filtering
-        document = Document(
-            page_content=document_text,
+        # not splitting into chunks because medical records are short enough to fit in one doc.
+        # splitting would break the link between symptoms and their medicines which is bad
+        doc = Document(
+            page_content=text,
             metadata={
                 "record_id": record_id,
                 "user_id": user_id,
@@ -202,91 +295,97 @@ def embed_medical_record(record_id, user_id, category, upload_date,
             }
         )
 
-        vectorstore.add_documents([document])
+        # remove old embedding if exists so we dont get duplicates
+        try:
+            store.delete(ids=[f"record_{record_id}"])
+        except:
+            pass
+
+        store.add_documents([doc], ids=[f"record_{record_id}"])
         return True
 
-    except Exception as error:
-        print(f"error: {error}")
+    except Exception as e:
+        print(f"embedding error: {e}")
+        return False
+
+
+def delete_medical_record(record_id):
+    store = get_vectorstore()
+    if store is None:
+        return False
+    try:
+        store.delete(ids=[f"record_{record_id}"])
+        return True
+    except Exception as e:
+        print(f"delete embedding error: {e}")
         return False
 
 
 def format_docs(docs):
-    """format retrieved documents into a string for the prompt context"""
     if not docs:
-        return "none found."
-    result = ""
-    for i, doc in enumerate(docs):
-        if i > 0:
-            result += "\n\n---\n\n"
-        result += doc.page_content
-    return result
+        return "no records found."
+    pieces = []
+    for doc in docs:
+        pieces.append(doc.page_content)
+    return "\n\n---\n\n".join(pieces)
 
 
 def chat_with_rag(user_id, question, clear_history=False):
-    """main chat function - retrieves relevent records from chromadb
-    and uses gemini to generate a response based on them"""
+    """main function - retrieves relevant records and generates answer"""
+
     if chat_model is None or embeddings_model is None:
-        return {"error": "models not ready"}
+        return {"error": "AI models not configured"}
 
     try:
         if clear_history:
             clear_user_memory(user_id)
 
-        vectorstore = get_or_create_vectorstore()
+        store = get_vectorstore()
+        if store is None:
+            return {"error": "vector db not available"}
 
-        if vectorstore is None:
-            return {"error": "no db"}
-
-        # search for records that match the users question
-        # we filter by user_id so users only see their own records
-        retriever = vectorstore.as_retriever(
-            search_type="similarity",
+        # using mmr instead of similarity so we dont get 5 almost identical records
+        # when a patient has repeat prescriptions. mmr picks more diverse results
+        retriever = store.as_retriever(
+            search_type="mmr",
             search_kwargs={
                 "k": 5,
+                "fetch_k": 10,
                 "filter": {"user_id": user_id}
             }
         )
 
-        retrieved_docs = retriever.invoke(question)
-        context = format_docs(retrieved_docs)
+        docs = retriever.invoke(question)
+        context = format_docs(docs)
+        history = format_history(user_id)
 
-        chat_history = format_chat_history(user_id)
+        # run the chain: prompt -> model -> parse output
+        chain = MEDICAL_PROMPT | chat_model | StrOutputParser()
 
-        # chain the prompt, model, and output parser together
-        # this is the langchain way of doing things
-        rag_chain = (
-            MEDICAL_PROMPT
-            | chat_model
-            | StrOutputParser()
-        )
-
-        answer = rag_chain.invoke({
+        answer = chain.invoke({
             "context": context,
-            "chat_history": chat_history,
+            "chat_history": history,
             "question": question
         })
 
-        add_to_chat_history(user_id, question, answer)
-
+        add_message(user_id, question, answer)
         return {"answer": answer}
 
-    except Exception as error:
-        return {"error": str(error)}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def get_vectorstore_stats():
-    """get some basic stats about whats in the vector database"""
-    vectorstore = get_or_create_vectorstore()
-
-    if vectorstore is None:
-        return {"error": "no vector db"}
+    store = get_vectorstore()
+    if store is None:
+        return {"error": "vector db not available"}
 
     try:
-        collection = vectorstore._collection
+        collection = store._collection
         count = collection.count()
         return {
             "total_documents": count,
-            "persist_directory": CHROMA_PERSIST_DIRECTORY
+            "persist_directory": CHROMA_DIR
         }
-    except Exception as error:
-        return {"error": str(error)}
+    except Exception as e:
+        return {"error": str(e)}
