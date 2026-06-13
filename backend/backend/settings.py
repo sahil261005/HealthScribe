@@ -102,7 +102,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # only allow our frontend
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [url.strip() for url in os.getenv('FRONTEND_URL', 'http://localhost:5173').split(',')]
+frontend_url_env = os.getenv('FRONTEND_URL', '').strip()
+if frontend_url_env:
+    CORS_ALLOWED_ORIGINS = [url.strip() for url in frontend_url_env.split(',') if url.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = ['http://localhost:5173']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
