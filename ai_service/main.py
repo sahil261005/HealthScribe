@@ -118,7 +118,7 @@ def get_stats():
 
 @app.post("/extract_data")
 @limiter.limit("5/minute")
-async def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "gemini"):
+async def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "hybrid"):
     # Accepts a scanned prescription image and extracts structured fields
     file_type = uploaded_file.content_type or "image/jpeg"
 
