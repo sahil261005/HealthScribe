@@ -8,3 +8,5 @@ venv/
 .vscode/
 chroma_db/
 chat_histories.json
+test_main.py
+evaluate_rag.py

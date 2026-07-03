@@ -17,7 +17,7 @@ CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
 CONNECTION_STRING = os.getenv("DATABASE_URL")
 
 
-# create chat_history table in postgres if it doesnt exist yet
+# Set up chat history table in postgres if database is connected
 def init_chat_table():
     if not CONNECTION_STRING:
         return
@@ -43,7 +43,7 @@ def init_chat_table():
 init_chat_table()
 
 
-# embedding model - using gemini embedding
+# Embeddings and LLM configuration
 embeddings_model = None
 if GEMINI_API_KEY:
     embeddings_model = GoogleGenerativeAIEmbeddings(
@@ -51,7 +51,6 @@ if GEMINI_API_KEY:
         google_api_key=GEMINI_API_KEY
     )
 
-# llm for chat
 chat_model = None
 if GEMINI_API_KEY:
     chat_model = ChatGoogleGenerativeAI(
@@ -85,8 +84,7 @@ MEDICAL_PROMPT = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
 
 
-# chat history helpers - uses postgres if available, otherwise json file
-
+# Chat history utilities (postgres with local JSON file fallback)
 def load_histories():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -109,12 +107,11 @@ chat_histories = load_histories()
 
 
 def get_history(user_id):
-    # try postgres first
+    # Try fetching history from Postgres
     if CONNECTION_STRING:
         try:
             conn = psycopg2.connect(CONNECTION_STRING)
             cur = conn.cursor()
-            # get last 20 msgs, ordered oldest first so the conversation reads properly
             cur.execute("""
                 SELECT sender, message FROM (
                     SELECT sender, message, created_at FROM chat_history
@@ -134,7 +131,7 @@ def get_history(user_id):
         except Exception as e:
             print(f"postgres history error: {e}")
 
-    # fallback to json file
+    # Fallback to in-memory JSON file history
     key = str(user_id)
     if key not in chat_histories:
         chat_histories[key] = []
@@ -142,6 +139,7 @@ def get_history(user_id):
 
 
 def add_message(user_id, question, answer):
+    # Save to Postgres
     if CONNECTION_STRING:
         try:
             conn = psycopg2.connect(CONNECTION_STRING)
@@ -154,7 +152,7 @@ def add_message(user_id, question, answer):
                 "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s)",
                 (str(user_id), "Assistant", answer)
             )
-            # cleanup old msgs so the table doesnt grow forever (keep last 20)
+            # Keep only the last 20 messages for this user to save space
             cur.execute("""
                 DELETE FROM chat_history
                 WHERE user_id = %s
@@ -172,7 +170,7 @@ def add_message(user_id, question, answer):
         except Exception as e:
             print(f"postgres add_message error: {e}")
 
-    # fallback to json
+    # Fallback to local JSON save
     key = str(user_id)
     history = get_history(key)
     history.append(f"Human: {question}")
@@ -211,8 +209,7 @@ def format_history(user_id):
     return "\n".join(history)
 
 
-# vector store - pgvector for supabase, chroma for local dev
-
+# Vector database initialization (Postgres PGVector / Local Chroma fallback)
 def get_vectorstore():
     if embeddings_model is None:
         return None
@@ -229,7 +226,7 @@ def get_vectorstore():
             print(f"pgvector error: {e}")
             return None
 
-    # local chromadb fallback
+    # Use Chroma locally
     try:
         store = Chroma(
             persist_directory=CHROMA_DIR,
@@ -244,14 +241,12 @@ def get_vectorstore():
 
 def embed_medical_record(record_id, user_id, category, upload_date,
                           symptoms, medicines, vitals, allergies):
-    """saves a medical record into the vector store for RAG search"""
-
+    # Formats a clinical record and embeds it into the vector database
     store = get_vectorstore()
     if store is None:
         return False
 
     try:
-        # build text from all the record fields
         parts = []
         parts.append(f"Medical Record from {upload_date}")
         parts.append(f"Category: {category}")
@@ -283,8 +278,8 @@ def embed_medical_record(record_id, user_id, category, upload_date,
 
         text = "\n".join(parts)
 
-        # not splitting into chunks because medical records are short enough to fit in one doc.
-        # splitting would break the link between symptoms and their medicines which is bad
+        # We keep the record in a single chunk so the LLM doesn't lose the
+        # semantic link between symptoms and their prescribed drugs.
         doc = Document(
             page_content=text,
             metadata={
@@ -295,7 +290,7 @@ def embed_medical_record(record_id, user_id, category, upload_date,
             }
         )
 
-        # remove old embedding if exists so we dont get duplicates
+        # Clear out previous records to avoid duplicate issues
         try:
             store.delete(ids=[f"record_{record_id}"])
         except:
@@ -330,9 +325,8 @@ def format_docs(docs):
     return "\n\n---\n\n".join(pieces)
 
 
-def chat_with_rag(user_id, question, clear_history=False):
-    """main function - retrieves relevant records and generates answer"""
-
+def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
+    # Main search and answer logic using LangChain and RAG
     if chat_model is None or embeddings_model is None:
         return {"error": "AI models not configured"}
 
@@ -344,24 +338,23 @@ def chat_with_rag(user_id, question, clear_history=False):
         if store is None:
             return {"error": "vector db not available"}
 
-        # using mmr instead of similarity so we dont get 5 almost identical records
-        # when a patient has repeat prescriptions. mmr picks more diverse results
+        # Configure retriever search parameters
+        search_kwargs = {"k": k, "fetch_k": 10, "filter": {"user_id": user_id}}
+        if search_type == "mmr":
+            search_kwargs["lambda_mult"] = lambda_mult
+
         retriever = store.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-                "k": 5,
-                "fetch_k": 10,
-                "filter": {"user_id": user_id}
-            }
+            search_type=search_type,
+            search_kwargs=search_kwargs
         )
 
+        # Get relevant documents and conversation context
         docs = retriever.invoke(question)
         context = format_docs(docs)
         history = format_history(user_id)
 
-        # run the chain: prompt -> model -> parse output
+        # Ask the model
         chain = MEDICAL_PROMPT | chat_model | StrOutputParser()
-
         answer = chain.invoke({
             "context": context,
             "chat_history": history,

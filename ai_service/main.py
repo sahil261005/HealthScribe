@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict
@@ -7,6 +7,9 @@ import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from rag_chain import (
     embed_medical_record,
@@ -20,10 +23,14 @@ logger = logging.getLogger("ai_service")
 
 load_dotenv()
 
+# Set up rate limiter
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Configure CORS origins
 frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[url.strip() for url in frontend_urls],
@@ -40,10 +47,11 @@ if GEMINI_API_KEY:
 else:
     logger.warning("GENAI_API_KEY not found - AI features will not work.")
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
 ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"]
 
 
+# Request and response models
 class MedicineItem(BaseModel):
     name: str
     dosage: str = ""
@@ -93,6 +101,9 @@ class ChatRequest(BaseModel):
     query: str
     user_id: int = 1
     clear_history: bool = False
+    search_type: str = "mmr"
+    k: int = 5
+    lambda_mult: float = 0.5
 
 
 @app.get("/")
@@ -106,9 +117,9 @@ def get_stats():
 
 
 @app.post("/extract_data")
-async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gemini"):
-    """takes a prescription image and extracts structured medical data from it"""
-
+@limiter.limit("5/minute")
+async def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "gemini"):
+    # Accepts a scanned prescription image and extracts structured fields
     file_type = uploaded_file.content_type or "image/jpeg"
 
     if file_type not in ALLOWED_TYPES:
@@ -125,7 +136,7 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="AI service is not configured.")
 
-    # prompt telling gemini what json format we want back
+    # Instructions for structured output parsing
     extraction_prompt = """
     You are a medical assistant. You will be provided with text extracted from a medical document.
     Extract this into pure JSON:
@@ -139,7 +150,6 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
     Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
     """
 
-    # try sarvam ocr first (works better for indian prescriptions)
     sarvam_text = None
     if engine != "gemini" and SARVAM_API_KEY:
         try:
@@ -148,9 +158,9 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
             import io
             import zipfile
 
-            logger.info("Trying Sarvam OCR (async digitization)...")
+            logger.info("Starting Sarvam OCR digitization...")
             
-            # Step 1: Create digitization job
+            # 1. Create the digitization job
             create_url = "https://api.sarvam.ai/doc-digitization/job/v1"
             headers = {
                 "api-subscription-key": SARVAM_API_KEY,
@@ -167,9 +177,9 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
                 raise Exception(f"Create job failed ({create_resp.status_code}): {create_resp.text}")
             
             job_id = create_resp.json()["job_id"]
-            logger.info("Created Sarvam job: %s", job_id)
+            logger.info("Job created: %s", job_id)
             
-            # Step 2: Get presigned upload URL
+            # 2. Request a presigned upload URL
             upload_init_url = "https://api.sarvam.ai/doc-digitization/job/v1/upload-files"
             upload_payload = {
                 "job_id": job_id,
@@ -177,7 +187,7 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
             }
             upload_init_resp = requests.post(upload_init_url, headers=headers, json=upload_payload, timeout=20)
             if upload_init_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Get upload URL failed ({upload_init_resp.status_code}): {upload_init_resp.text}")
+                raise Exception(f"Failed to get upload URL: {upload_init_resp.text}")
             
             upload_json = upload_init_resp.json()
             presigned_url = None
@@ -194,22 +204,22 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
             if not presigned_url:
                 raise Exception(f"No upload URL found in response: {upload_json}")
             
-            # Step 3: PUT the file to the presigned URL
+            # 3. PUT the file binary to the presigned url
             put_headers = {"Content-Type": file_type}
             if "blob.core.windows.net" in presigned_url:
                 put_headers["x-ms-blob-type"] = "BlockBlob"
                 
             put_resp = requests.put(presigned_url, data=file_content, headers=put_headers, timeout=30)
             if put_resp.status_code not in (200, 201, 202, 204):
-                raise Exception(f"Upload to storage failed ({put_resp.status_code}): {put_resp.text}")
+                raise Exception(f"Upload to storage failed ({put_resp.status_code})")
             
-            # Step 4: Start the job
+            # 4. Trigger the job to start
             start_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/start"
             start_resp = requests.post(start_url, headers=headers, timeout=20)
             if start_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Start job failed ({start_resp.status_code}): {start_resp.text}")
+                raise Exception(f"Failed to start job ({start_resp.status_code})")
             
-            # Step 5: Poll for status
+            # 5. Poll the status until completed
             status_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/status"
             max_polls = 50
             completed = False
@@ -217,30 +227,33 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
                 time.sleep(3)
                 status_resp = requests.get(status_url, headers=headers, timeout=15)
                 if status_resp.status_code in (200, 201, 202):
-                    status = status_resp.json().get("status")
-                    logger.info("Job %s status check %d: %s", job_id, attempt + 1, status)
-                    if status == "completed":
+                    resp_data = status_resp.json()
+                    # Sarvam API returns "job_state" instead of "status"
+                    job_state = resp_data.get("job_state", resp_data.get("status", ""))
+                    if job_state:
+                        job_state = job_state.lower()
+                    logger.info("Job %s status check %d: %s", job_id, attempt + 1, job_state)
+                    if job_state == "completed":
                         completed = True
                         break
-                    elif status in ("failed", "cancelled"):
-                        raise Exception(f"Job failed with status: {status}")
+                    elif job_state in ("failed", "cancelled"):
+                        raise Exception(f"Job failed with status: {job_state}")
                 else:
                     logger.warning("Failed to check status: %s", status_resp.text)
             
             if not completed:
-                raise Exception("Job timed out waiting for completion")
+                raise Exception("Job timed out")
             
-            # Step 6: Download the results zip
+            # 6. Retrieve the results zip URL
             download_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/download-files"
             download_resp = requests.post(download_url, headers=headers, timeout=20)
             if download_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Get download URL failed ({download_resp.status_code}): {download_resp.text}")
+                raise Exception(f"Get download URL failed: {download_resp.text}")
             
             download_json = download_resp.json()
-            download_urls_dict = download_json.get("download_urls", {})
-            
             zip_download_url = None
-            if download_urls_dict:
+            if download_json.get("download_urls"):
+                download_urls_dict = download_json.get("download_urls", {})
                 first_val = list(download_urls_dict.values())[0]
                 if isinstance(first_val, dict):
                     zip_download_url = first_val.get("url") or first_val.get("file_url")
@@ -253,13 +266,13 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
                 zip_download_url = download_json["urls"][0]
                 
             if not zip_download_url:
-                raise Exception(f"No download URL found in response: {download_json}")
+                raise Exception(f"No download URL found: {download_json}")
                 
             zip_resp = requests.get(zip_download_url, timeout=30)
             if zip_resp.status_code != 200:
-                raise Exception(f"Failed to download results zip ({zip_resp.status_code})")
+                raise Exception("Failed to download results zip")
             
-            # Step 7: Unzip and read the text
+            # 7. Unzip and parse the text content
             with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as z:
                 text_content = ""
                 for filename in z.namelist():
@@ -268,7 +281,7 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
                             text_content = f.read().decode("utf-8")
                             break
                 
-                # If no md/txt, try to read json
+                # Check for json outputs if no md/txt exists
                 if not text_content:
                     for filename in z.namelist():
                         if filename.endswith(".json"):
@@ -279,18 +292,17 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
             
             if text_content:
                 sarvam_text = text_content
-                logger.info("Sarvam OCR worked! Extracted text length: %d", len(sarvam_text))
+                logger.info("Sarvam OCR finished successfully.")
             else:
-                raise Exception("No readable text file found in the results zip")
+                raise Exception("No text files found inside the results zip.")
         except Exception as e:
-            logger.warning("Sarvam OCR failed, falling back to Gemini directly: %s", e)
+            logger.warning("Sarvam OCR failed. Falling back to Gemini direct vision: %s", e)
 
-    # now use gemini to structure the text into json
+    # Use Gemini to parse the output text or image into structured JSON
     ai_response = None
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        # standard JSON schema representation to bypass SDK translation bugs
         json_schema = {
             "type": "object",
             "properties": {
@@ -328,62 +340,57 @@ async def extract_data(uploaded_file: UploadFile = File(...), engine: str = "gem
             "required": ["doctor_name", "medicines", "symptoms", "vitals", "allergies"]
         }
 
-        # tell gemini to return structured json matching our schema
         config = {
             "response_mime_type": "application/json",
             "response_schema": json_schema
         }
 
         if sarvam_text:
-            # if sarvam gave us text, feed that to gemini
             ai_response = model.generate_content(
                 f"{extraction_prompt}\n\nTEXT CONTENT:\n{sarvam_text}",
                 generation_config=config
             )
         else:
-            # otherwise send the raw image to gemini directly
-            logger.info("Using Gemini for image extraction directly.")
+            logger.info("Running Gemini vision direct upload...")
             ai_response = model.generate_content([
                 {"mime_type": file_type, "data": file_content},
                 extraction_prompt,
             ], generation_config=config)
 
-        # parse the clean JSON response from Gemini
         result = json.loads(ai_response.text)
         result["ocr_engine"] = "Sarvam AI" if sarvam_text else "Gemini"
-
         return result
 
     except json.JSONDecodeError:
         raw = ai_response.text if ai_response else "no response"
-        logger.error("Gemini gave bad JSON: %s", raw)
-        raise HTTPException(status_code=422, detail="Could not parse AI response as JSON.")
+        logger.error("Gemini returned invalid JSON structure: %s", raw)
+        raise HTTPException(status_code=422, detail="Failed to parse structured JSON from model.")
     except Exception as e:
-        logger.exception("Extraction failed: %s", e)
+        logger.exception("AI Extraction failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/embed_record")
-async def embed_record(request: EmbedRecordRequest):
-    """saves a medical record into the vector db for RAG search later"""
+@limiter.limit("10/minute")
+async def embed_record(request: Request, body: EmbedRecordRequest):
+    # Saves record schema fields into vector store
     try:
-        # convert pydantic medicine objects to plain dicts
-        medicines = [med.model_dump() for med in request.medicines]
+        medicines = [med.model_dump() for med in body.medicines]
 
         ok = embed_medical_record(
-            record_id=request.record_id,
-            user_id=request.user_id,
-            category=request.category,
-            upload_date=request.upload_date,
-            symptoms=request.symptoms,
+            record_id=body.record_id,
+            user_id=body.user_id,
+            category=body.category,
+            upload_date=body.upload_date,
+            symptoms=body.symptoms,
             medicines=medicines,
-            vitals=request.vitals,
-            allergies=request.allergies,
+            vitals=body.vitals,
+            allergies=body.allergies,
         )
 
         if ok:
-            logger.info("Embedded record %d for user %d", request.record_id, request.user_id)
-            return {"message": "ok", "record_id": request.record_id}
+            logger.info("Embedded record %d for user %d", body.record_id, body.user_id)
+            return {"message": "ok", "record_id": body.record_id}
         else:
             raise HTTPException(status_code=500, detail="Failed to embed record.")
 
@@ -396,22 +403,24 @@ async def embed_record(request: EmbedRecordRequest):
 
 @app.post("/delete_record")
 async def delete_record(request: DeleteRecordRequest):
-    """deletes a medical record from the vector db"""
     from rag_chain import delete_medical_record
     delete_medical_record(request.record_id)
     return {"message": "ok"}
 
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
-    """RAG chat - searches patient records and answers questions"""
-    if not request.query or not request.query.strip():
+@limiter.limit("10/minute")
+async def chat(request: Request, body: ChatRequest):
+    if not body.query or not body.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     result = chat_with_rag(
-        user_id=request.user_id,
-        question=request.query.strip(),
-        clear_history=request.clear_history,
+        user_id=body.user_id,
+        question=body.query.strip(),
+        clear_history=body.clear_history,
+        search_type=body.search_type,
+        k=body.k,
+        lambda_mult=body.lambda_mult,
     )
 
     if "error" in result:
@@ -428,16 +437,16 @@ async def clear_chat(request: dict):
 
 
 @app.post("/check_interactions")
-async def check_interactions(request: InteractionRequest):
-    """checks if any of the new medicines have bad interactions with current ones"""
+@limiter.limit("10/minute")
+async def check_interactions(request: Request, body: InteractionRequest):
     if not GEMINI_API_KEY:
         return {"warnings": []}
 
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
 
-        current = ", ".join(request.current_medicines) if request.current_medicines else "None"
-        new = ", ".join(request.new_medicines)
+        current = ", ".join(body.current_medicines) if body.current_medicines else "None"
+        new = ", ".join(body.new_medicines)
 
         prompt = f"""A patient is currently taking: {current}
 They have been newly prescribed: {new}
@@ -458,21 +467,21 @@ Return ONLY a JSON array of strings, nothing else."""
 
 
 @app.post("/compare_doctors")
-async def compare_doctors(request: CompareDoctorsRequest):
-    """compares two medical records from different doctors"""
+@limiter.limit("5/minute")
+async def compare_doctors(request: Request, body: CompareDoctorsRequest):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="AI not configured")
 
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
 
-        doc1 = request.record1.get("doctor_name", "Doctor A")
-        doc2 = request.record2.get("doctor_name", "Doctor B")
+        doc1 = body.record1.get("doctor_name", "Doctor A")
+        doc2 = body.record2.get("doctor_name", "Doctor B")
 
         prompt = f"""Compare these two medical records:
 
-Doctor {doc1}: symptoms={request.record1.get('symptoms')}, medicines={request.record1.get('medicines')}
-Doctor {doc2}: symptoms={request.record2.get('symptoms')}, medicines={request.record2.get('medicines')}
+Doctor {doc1}: symptoms={body.record1.get('symptoms')}, medicines={body.record1.get('medicines')}
+Doctor {doc2}: symptoms={body.record2.get('symptoms')}, medicines={body.record2.get('medicines')}
 
 What are the differences in treatment? Explain in simple terms why they might differ.
 Keep it short and remind the patient to consult a specialist if unsure."""
@@ -482,5 +491,3 @@ Keep it short and remind the patient to consult a specialist if unsure."""
     except Exception as e:
         logger.error("Compare failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
-
-

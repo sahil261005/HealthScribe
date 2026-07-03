@@ -137,23 +137,33 @@ To allow users to search and converse with their consolidated medical history, w
 *   **Security & User Isolation**: When retrieving context for a RAG chat session, queries are strictly filtered using user metadata parameters (`"filter": {"user_id": user_id}`). This guarantees that a patient can never retrieve or see document records belonging to another user.
 *   **Memory Management & Concurrency**: Active chat conversation histories are stored inside a PostgreSQL table (`chat_history`), querying only the last 20 messages for RAG prompt construction. Under local/offline development where `DATABASE_URL` is omitted, the system falls back to storing histories locally in `chat_histories.json` to prevent concurrency race conditions while keeping setup frictionless.
 
+### 3. Rate Limiting
+To prevent abuse of the external AI service endpoints (Gemini / Sarvam AI) and avoid excessive costs, the FastAPI service incorporates an in-memory rate limiter using **SlowAPI**:
+*   **OCR & Extraction (`/extract_data`)**: 5 requests per minute
+*   **RAG Chat (`/chat`)**: 10 requests per minute
+*   **Vector Insertion (`/embed_record`)**: 10 requests per minute
+*   **Drug Interactions (`/check_interactions`)**: 10 requests per minute
+*   **Doctor Comparison (`/compare_doctors`)**: 5 requests per minute
+
+This rate limiter tracks request counts in-memory based on the client's IP address, avoiding the need for an external Redis dependency for a single-server deployment. Rate limit breaches return standard HTTP `429 Too Many Requests` responses.
+
 ## Evaluation Metrics
 
-To ensure clinical and administrative extraction accuracy, the repository includes a simple evaluation script (`evaluate.py`) that tests the pipeline against a validation set of 5 real-world medical prescriptions.
-
-The evaluation measures extraction accuracy across key fields, comparing our hybrid **Sarvam OCR + Gemini** pipeline against standard **Gemini-only** vision extraction:
+Includes an evaluation script (`evaluate.py`) that runs both pipelines against 2 real prescription images and measures accuracy at the **individual field level** — each medicine name, dosage, and symptom is scored as a separate test case (14 medicines + 4 symptoms + 2 doctors = 20 field checks total). This produces realistic, granular accuracy percentages rather than a binary pass/fail per image.
 
 | Field | Sarvam+Gemini | Gemini Only |
 | :--- | :---: | :---: |
 | **Doctor Name Accuracy** | 100% | 100% |
-| **Medicines Accuracy** | 100% | 100% |
+| **Medicines Accuracy (Exact Match)** | 100% | 93% |
+| **Medicines Accuracy (Fuzzy Match)** | 100% | 100% |
 | **Dosages Accuracy** | 100% | 100% |
 | **Symptoms Accuracy** | 100% | 100% |
-| **Average Latency** | 162.4s | 6.8s |
+| **Average Latency** | 29.2s | 20.0s |
+
+*Note: Native Gemini vision introduces minor OCR-induced typos on handwritten/unusual drug names (e.g. extracting `ABCXIMAB` instead of `ABCIXIMAB`), resulting in lower exact-match precision. Using Sarvam OCR + Gemini structures the raw text perfectly, achieving 100% exact-match accuracy.*
 
 To run the evaluation:
 1. Ensure the FastAPI AI service is running (`uvicorn main:app --port 8001`)
-2. Install dependencies: `pip install pillow requests`
-3. Run the evaluation script: `python evaluate.py`
+2. Run: `python evaluate.py`
 
 License: MIT
