@@ -48,6 +48,7 @@ function AuthPage() {
         <div className="auth-page">
             <div className="auth-split-layout">
                 <div className="auth-info-side">
+                    <h2 className="auth-brand">HealthScribe</h2>
                     <h1 className="auth-tagline">
                         Your Prescriptions, Digitized and Searchable
                     </h1>
