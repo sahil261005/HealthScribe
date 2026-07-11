@@ -163,14 +163,83 @@ body {
   background: #f0f4f3;
 }
 
-.auth-card-container {
+.auth-split-layout {
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  max-width: 960px;
   width: 100%;
-  max-width: 420px;
+  padding: 40px 20px;
+}
+
+.auth-info-side {
+  flex: 1;
+  max-width: 440px;
+}
+
+.auth-tagline {
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #1a2e2a;
+  margin-bottom: 14px;
+}
+
+.auth-description {
+  font-size: 15px;
+  color: #5a6b66;
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+
+.auth-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.auth-feature-icon {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border-radius: 50%;
+  background: #e8f5f0;
+  color: #1a8a6e;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.auth-feature-text {
+  font-size: 13.5px;
+  color: #5a6b66;
+  line-height: 1.5;
+}
+
+.auth-feature-title {
+  font-weight: 600;
+  color: #1a2e2a;
+  margin-bottom: 3px;
+  font-size: 14.5px;
+}
+
+.auth-card-side {
+  flex: 1;
+  max-width: 400px;
 }
 
 .auth-card {
   background: white;
-  padding: 40px 32px;
+  padding: 36px 30px;
   border-radius: 10px;
   border: 1px solid #ddd;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -178,21 +247,13 @@ body {
 
 .auth-header {
   text-align: center;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
-
-
 
 .auth-title {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  margin-bottom: 6px;
   color: #222;
-}
-
-.auth-subtitle {
-  color: #888;
-  font-size: 14px;
 }
 
 .auth-form {
@@ -205,14 +266,22 @@ body {
   position: relative;
 }
 
+.auth-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #444;
+  margin-bottom: 6px;
+}
+
 .auth-input {
   width: 100%;
-  padding: 12px;
+  padding: 11px 12px;
   background: #fafafa;
   border: 1px solid #ddd;
   border-radius: 6px;
   color: #333;
-  font-size: 15px;
+  font-size: 14.5px;
 }
 
 .auth-input::placeholder {
@@ -285,6 +354,33 @@ body {
   margin-top: 12px;
   margin-bottom: 0;
 }
+
+/* responsive: stack vertically on small screens */
+@media (max-width: 768px) {
+  .auth-split-layout {
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .auth-info-side {
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .auth-feature-list {
+    text-align: left;
+  }
+
+  .auth-card-side {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .auth-tagline {
+    font-size: 1.5rem;
+  }
+}
+
 
 
 /* ---------- dashboard ---------- */

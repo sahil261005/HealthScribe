@@ -180,10 +180,14 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             logger.info("Job created: %s", job_id)
             
             # 2. Request a presigned upload URL
+            # Sanitize the filename to avoid spaces/special characters
+            file_extension = os.path.splitext(uploaded_file.filename or "file.png")[1]
+            safe_filename = f"document{file_extension}"
+            
             upload_init_url = "https://api.sarvam.ai/doc-digitization/job/v1/upload-files"
             upload_payload = {
                 "job_id": job_id,
-                "files": [uploaded_file.filename or "file.png"]
+                "files": [safe_filename]
             }
             upload_init_resp = requests.post(upload_init_url, headers=headers, json=upload_payload, timeout=20)
             if upload_init_resp.status_code not in (200, 201, 202):
@@ -212,6 +216,9 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             put_resp = requests.put(presigned_url, data=file_content, headers=put_headers, timeout=30)
             if put_resp.status_code not in (200, 201, 202, 204):
                 raise Exception(f"Upload to storage failed ({put_resp.status_code})")
+            
+            # Give Azure storage a second to propagate the upload
+            time.sleep(1.5)
             
             # 4. Trigger the job to start
             start_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/start"
