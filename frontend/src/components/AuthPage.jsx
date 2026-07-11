@@ -49,32 +49,32 @@ function AuthPage() {
             <div className="auth-split-layout">
                 <div className="auth-info-side">
                     <h1 className="auth-tagline">
-                        AI-Powered Prescription Digitization & Medical Records Platform
+                        Your Prescriptions, Digitized and Searchable
                     </h1>
                     <p className="auth-description">
-                        Upload handwritten prescriptions, extract structured medical data using hybrid OCR, and query your health history through a RAG-powered conversational interface.
+                        Upload a photo of any handwritten or printed prescription and get clean, structured medical records you can search, review, and share with your doctor.
                     </p>
 
                     <div className="auth-feature-list">
                         <div className="auth-feature-item">
                             <span className="auth-feature-icon">1</span>
                             <div className="auth-feature-text">
-                                <div className="auth-feature-title">Hybrid OCR Pipeline</div>
-                                Sarvam AI digitizes handwritten Indian prescriptions, with Gemini 2.5 Flash as a structured extraction fallback for printed documents.
+                                <div className="auth-feature-title">Snap and Extract</div>
+                                Take a photo of your prescription. The app reads the handwriting and pulls out medicines, dosages, vitals, and allergies automatically.
                             </div>
                         </div>
                         <div className="auth-feature-item">
                             <span className="auth-feature-icon">2</span>
                             <div className="auth-feature-text">
-                                <div className="auth-feature-title">RAG-Based Medical Chat</div>
-                                Ask questions about your prescriptions and health records. Retrieves relevant context from your medical history using vector search before generating answers.
+                                <div className="auth-feature-title">Ask About Your Health</div>
+                                Chat with your medical history in plain language. Ask things like "what was I prescribed for my headache last month?" and get instant answers.
                             </div>
                         </div>
                         <div className="auth-feature-item">
                             <span className="auth-feature-icon">3</span>
                             <div className="auth-feature-text">
-                                <div className="auth-feature-title">LLM-as-a-Judge Evaluation</div>
-                                Automated quality scoring pipeline that grades extraction accuracy, completeness, and clinical coherence against source prescriptions.
+                                <div className="auth-feature-title">Share Securely</div>
+                                Generate a private link to share any record with your doctor or family — no account needed on their end.
                             </div>
                         </div>
                     </div>
