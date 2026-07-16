@@ -1,0 +1,189 @@
+[
+  {
+    "id": 1,
+    "doctor_name": "Dr. Akshara",
+    "symptoms": ["fever", "headache"],
+    "medicines": [
+      {"name": "ABCIXIMAB", "dosage": "morning"},
+      {"name": "VOMILAST", "dosage": "morning"},
+      {"name": "ZOCLAR", "dosage": "morning"},
+      {"name": "GESTAKIND", "dosage": "night"}
+    ]
+  },
+  {
+    "id": 2,
+    "doctor_name": "Dr. Darshan Singh Bhakuni",
+    "symptoms": ["tightness of skin", "ulcers"],
+    "medicines": [
+      {"name": "Linezolid", "dosage": "twice a day"},
+      {"name": "Clopidogrel", "dosage": "once a day"},
+      {"name": "Amlodipine", "dosage": "once a day"},
+      {"name": "Domperidone", "dosage": "twice a day"},
+      {"name": "Omeprazole", "dosage": "twice a day"},
+      {"name": "Bosentan", "dosage": "twice a day"},
+      {"name": "Sildinafil", "dosage": "twice a day"},
+      {"name": "Prednisolone", "dosage": "once a day"},
+      {"name": "Mycophenolate", "dosage": "twice a day"},
+      {"name": "ciprofloxacin", "dosage": "twice a day"}
+    ]
+  },
+  {
+    "id": 3,
+    "doctor_name": "Dr. Rajesh Sharma",
+    "symptoms": ["cough", "sore throat", "runny nose"],
+    "medicines": [
+      {"name": "Amoxicillin", "dosage": "twice a day"},
+      {"name": "Cetirizine", "dosage": "night"},
+      {"name": "Grilinctus Syrup", "dosage": "twice a day"}
+    ]
+  },
+  {
+    "id": 4,
+    "doctor_name": "Dr. Priya Patel",
+    "symptoms": ["high blood pressure", "dizziness"],
+    "medicines": [
+      {"name": "Telmisartan", "dosage": "once a day"},
+      {"name": "Hydrochlorothiazide", "dosage": "morning"}
+    ]
+  },
+  {
+    "id": 5,
+    "doctor_name": "Dr. Amit Verma",
+    "symptoms": ["stomach pain", "acid reflux"],
+    "medicines": [
+      {"name": "Pantoprazole", "dosage": "morning"},
+      {"name": "Domperidone", "dosage": "twice a day"},
+      {"name": "Sucralfate Gel", "dosage": "three times a day"}
+    ]
+  },
+  {
+    "id": 6,
+    "doctor_name": "Dr. Shalini Joshi",
+    "symptoms": ["joint pain", "swelling"],
+    "medicines": [
+      {"name": "Naproxen", "dosage": "twice a day"},
+      {"name": "Omeprazole", "dosage": "once a day"}
+    ]
+  },
+  {
+    "id": 7,
+    "doctor_name": "Dr. Vikram Reddy",
+    "symptoms": ["high blood sugar", "fatigue"],
+    "medicines": [
+      {"name": "Metformin", "dosage": "twice a day"},
+      {"name": "Glimepiride", "dosage": "morning"}
+    ]
+  },
+  {
+    "id": 8,
+    "doctor_name": "Dr. Sneha Gupta",
+    "symptoms": ["skin rash", "itching"],
+    "medicines": [
+      {"name": "Hydrocortisone Cream", "dosage": "twice a day"},
+      {"name": "Loratadine", "dosage": "once a day"}
+    ]
+  },
+  {
+    "id": 9,
+    "doctor_name": "Dr. R. K. Iyer",
+    "symptoms": ["chest congestion", "asthma"],
+    "medicines": [
+      {"name": "Montelukast", "dosage": "night"},
+      {"name": "Salbutamol Inhaler", "dosage": "as needed"}
+    ]
+  },
+  {
+    "id": 10,
+    "doctor_name": "Dr. Anita Desai",
+    "symptoms": ["migraine", "nausea"],
+    "medicines": [
+      {"name": "Sumatriptan", "dosage": "as needed"},
+      {"name": "Ondansetron", "dosage": "twice a day"}
+    ]
+  },
+  {
+    "id": 11,
+    "doctor_name": "Dr. Sanjay Gupta",
+    "symptoms": ["high cholesterol"],
+    "medicines": [
+      {"name": "Atorvastatin", "dosage": "night"}
+    ]
+  },
+  {
+    "id": 12,
+    "doctor_name": "Dr. Manoj Chandra",
+    "symptoms": ["eye irritation", "redness"],
+    "medicines": [
+      {"name": "Carboxymethylcellulose Eye Drops", "dosage": "four times a day"}
+    ]
+  },
+  {
+    "id": 13,
+    "doctor_name": "Dr. G. S. Prasad",
+    "symptoms": ["fever", "body ache", "chills"],
+    "medicines": [
+      {"name": "Paracetamol", "dosage": "three times a day"},
+      {"name": "Azithromycin", "dosage": "once a day"}
+    ]
+  },
+  {
+    "id": 14,
+    "doctor_name": "Dr. Meera Nair",
+    "symptoms": ["fatigue", "weight gain"],
+    "medicines": [
+      {"name": "Levothyroxine", "dosage": "morning"}
+    ]
+  },
+  {
+    "id": 15,
+    "doctor_name": "Dr. H. S. Bindra",
+    "symptoms": ["lower back pain", "muscle spasm"],
+    "medicines": [
+      {"name": "Aceclofenac", "dosage": "twice a day"},
+      {"name": "Thiocolchicoside", "dosage": "twice a day"}
+    ]
+  },
+  {
+    "id": 16,
+    "doctor_name": "Dr. Sunita Kulkarni",
+    "symptoms": ["urinary burning sensation"],
+    "medicines": [
+      {"name": "Nitrofurantoin", "dosage": "twice a day"},
+      {"name": "Cranberry Extract", "dosage": "once a day"}
+    ]
+  },
+  {
+    "id": 17,
+    "doctor_name": "Dr. Deepak Mehta",
+    "symptoms": ["earache", "fluid discharge"],
+    "medicines": [
+      {"name": "Ciprofloxacin Ear Drops", "dosage": "twice a day"}
+    ]
+  },
+  {
+    "id": 18,
+    "doctor_name": "Dr. K. Radhakrishnan",
+    "symptoms": ["anxiety", "sleeplessness"],
+    "medicines": [
+      {"name": "Clonazepam", "dosage": "night"}
+    ]
+  },
+  {
+    "id": 19,
+    "doctor_name": "Dr. Kavitha Krishnan",
+    "symptoms": ["iron deficiency", "weakness"],
+    "medicines": [
+      {"name": "Ferrous Ascorbate", "dosage": "once a day"},
+      {"name": "Folic Acid", "dosage": "once a day"}
+    ]
+  },
+  {
+    "id": 20,
+    "doctor_name": "Dr. Anil Malhotra",
+    "symptoms": ["loose motions", "dehydration"],
+    "medicines": [
+      {"name": "ORS", "dosage": "as needed"},
+      {"name": "Loperamide", "dosage": "twice a day"}
+    ]
+  }
+]

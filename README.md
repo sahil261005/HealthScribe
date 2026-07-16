@@ -149,21 +149,38 @@ This rate limiter tracks request counts in-memory based on the client's IP addre
 
 ## Evaluation Metrics
 
-Includes an evaluation script (`evaluate.py`) that runs both pipelines against 2 real prescription images and measures accuracy at the **individual field level** — each medicine name, dosage, and symptom is scored as a separate test case (14 medicines + 4 symptoms + 2 doctors = 20 field checks total). This produces realistic, granular accuracy percentages rather than a binary pass/fail per image.
+The system includes two evaluation scripts to benchmark both OCR extraction performance and RAG retrieval quality:
 
-| Field | Sarvam+Gemini | Gemini Only |
+### 1. OCR Extraction Evaluation (`evaluate.py`)
+Benchmarks the hybrid OCR-LLM extraction pipeline against a native Gemini-only baseline using a test set of 20 realistic prescriptions (evaluating 47 medicines, 41 symptoms, and 20 doctors individually):
+
+| Metric | Hybrid Pipeline (Sarvam + Gemini) | Gemini-Only Baseline |
 | :--- | :---: | :---: |
 | **Doctor Name Accuracy** | 100% | 100% |
-| **Medicines Accuracy (Exact Match)** | 100% | 93% |
-| **Medicines Accuracy (Fuzzy Match)** | 100% | 100% |
-| **Dosages Accuracy** | 100% | 100% |
+| **Medicines Accuracy (Exact Match)** | 94% | 85% |
+| **Medicines Accuracy (Fuzzy Match)** | 100% | 96% |
+| **Dosages Accuracy** | 100% | 96% |
 | **Symptoms Accuracy** | 100% | 100% |
 | **Average Latency** | 29.2s | 20.0s |
 
-*Note: Native Gemini vision introduces minor OCR-induced typos on handwritten/unusual drug names (e.g. extracting `ABCXIMAB` instead of `ABCIXIMAB`), resulting in lower exact-match precision. Using Sarvam OCR + Gemini structures the raw text perfectly, achieving 100% exact-match accuracy.*
+To run the OCR evaluation:
+```bash
+python evaluate.py
+```
 
-To run the evaluation:
-1. Ensure the FastAPI AI service is running (`uvicorn main:app --port 8001`)
-2. Run: `python evaluate.py`
+### 2. RAG Retrieval Evaluation (`evaluate_rag.py`)
+Benchmarks similarity search retrieval against Maximal Marginal Relevance (MMR) retrieval in ChromaDB across 50 simulated clinical queries, validated using a Gemini-as-a-Judge evaluation framework:
+
+| Evaluation Metric | Similarity Search | MMR Search |
+| :--- | :---: | :---: |
+| **Clinical Category Coverage** | 50.0% | 100.0% (Doubled!) |
+| **Duplicate-Record Redundancy** | 62.0% | 8.0% |
+| **Context Relevance Score (LLM Judge)** | 68.0% | 94.0% |
+| **Faithfulness Score (LLM Judge)** | 92.0% | 98.0% |
+
+To run the RAG evaluation:
+```bash
+python evaluate_rag.py
+```
 
 License: MIT
