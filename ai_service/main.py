@@ -76,6 +76,7 @@ class EmbedRecordRequest(BaseModel):
     record_id: int
     user_id: int
     category: str = ""
+    doctor_name: str = ""
     upload_date: str = ""
     symptoms: List[str] = []
     medicines: List[MedicineItem] = []
@@ -388,6 +389,7 @@ async def embed_record(request: Request, body: EmbedRecordRequest):
             record_id=body.record_id,
             user_id=body.user_id,
             category=body.category,
+            doctor_name=body.doctor_name,
             upload_date=body.upload_date,
             symptoms=body.symptoms,
             medicines=medicines,

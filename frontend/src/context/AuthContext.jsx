@@ -62,6 +62,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('refresh_token', tokens.refresh);
 
             setUser({
+                id: userData.id,
                 username: userData.username,
                 email: userData.email
             });

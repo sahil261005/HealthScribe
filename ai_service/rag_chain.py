@@ -239,7 +239,7 @@ def get_vectorstore():
         return None
 
 
-def embed_medical_record(record_id, user_id, category, upload_date,
+def embed_medical_record(record_id, user_id, category, doctor_name, upload_date,
                           symptoms, medicines, vitals, allergies):
     # Formats a clinical record and embeds it into the vector database
     store = get_vectorstore()
@@ -250,6 +250,8 @@ def embed_medical_record(record_id, user_id, category, upload_date,
         parts = []
         parts.append(f"Medical Record from {upload_date}")
         parts.append(f"Category: {category}")
+        if doctor_name:
+            parts.append(f"Doctor: {doctor_name}")
 
         if symptoms:
             parts.append(f"Symptoms: {', '.join(symptoms)}")

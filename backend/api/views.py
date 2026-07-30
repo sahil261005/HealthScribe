@@ -70,6 +70,7 @@ class RegisterView(APIView):
             return Response({
                 "message": "Registration successful!",
                 "user": {
+                    "id": new_user.id,
                     "username": new_user.username,
                     "email": new_user.email
                 },
@@ -255,6 +256,7 @@ class SaveRecordView(APIView):
                     "record_id": record.id,
                     "user_id": user.id,
                     "category": record.category,
+                    "doctor_name": record.doctor_name,
                     "upload_date": str(record.upload_date),
                     "symptoms": symptoms,
                     "medicines": meds_payload,
