@@ -139,7 +139,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
 
     # Instructions for structured output parsing
     extraction_prompt = """
-    You are a medical assistant. You will be provided with text extracted from a medical document.
+    You are a medical assistant extracting clinical information from a prescription or medical document.
     Extract this into pure JSON:
     {
         "doctor_name": "String",
@@ -148,7 +148,10 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
         "vitals": {"bp": "String", "pulse": "String", "temp": "String"},
         "allergies": ["String"]
     }
-    Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
+    CRITICAL RULES:
+    1. ONLY extract symptoms that are specifically written as the patient's actual complaints or diagnosis.
+    2. DO NOT extract printed letterhead lists, doctor specialties, clinic services (e.g. "Tonsillitis, Throat Cancer, Deviated Nasal Septum, Broken Nose"), or sidebar checklists as patient symptoms.
+    3. Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
     """
 
     sarvam_text = None

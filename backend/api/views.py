@@ -252,12 +252,13 @@ class SaveRecordView(APIView):
                         "reason": med.get("reason", "")
                     })
 
+                date_str = record.upload_date.strftime("%B %d, %Y") if hasattr(record.upload_date, 'strftime') else str(record.upload_date)
                 embed_payload = {
                     "record_id": record.id,
                     "user_id": user.id,
                     "category": record.category,
                     "doctor_name": record.doctor_name,
-                    "upload_date": str(record.upload_date),
+                    "upload_date": date_str,
                     "symptoms": symptoms,
                     "medicines": meds_payload,
                     "vitals": vitals,
