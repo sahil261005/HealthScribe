@@ -17,12 +17,14 @@ CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
 CONNECTION_STRING = os.getenv("DATABASE_URL")
 
 
-# Set up chat history table in postgres if database is connected
+_chat_table_initialized = False
+
 def init_chat_table():
-    if not CONNECTION_STRING:
+    global _chat_table_initialized
+    if _chat_table_initialized or not CONNECTION_STRING:
         return
     try:
-        conn = psycopg2.connect(CONNECTION_STRING)
+        conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chat_history (
@@ -36,28 +38,34 @@ def init_chat_table():
         conn.commit()
         cur.close()
         conn.close()
+        _chat_table_initialized = True
         print("chat_history table ready")
     except Exception as e:
         print(f"couldnt create chat_history table: {e}")
 
-init_chat_table()
 
-
-# Embeddings and LLM configuration
+# Embeddings and LLM lazy configuration
 embeddings_model = None
-if GEMINI_API_KEY:
-    embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001",
-        google_api_key=GEMINI_API_KEY
-    )
-
 chat_model = None
-if GEMINI_API_KEY:
-    chat_model = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.3,
-    )
+
+def get_embeddings_model():
+    global embeddings_model
+    if embeddings_model is None and GEMINI_API_KEY:
+        embeddings_model = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=GEMINI_API_KEY
+        )
+    return embeddings_model
+
+def get_chat_model():
+    global chat_model
+    if chat_model is None and GEMINI_API_KEY:
+        chat_model = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=GEMINI_API_KEY,
+            temperature=0.3,
+        )
+    return chat_model
 
 PROMPT_TEMPLATE = """You are a helpful medical assistant for the HealthScribe app.
 
@@ -211,14 +219,15 @@ def format_history(user_id):
 
 # Vector database initialization (Postgres PGVector / Local Chroma fallback)
 def get_vectorstore():
-    if embeddings_model is None:
+    emb = get_embeddings_model()
+    if emb is None:
         return None
 
     if CONNECTION_STRING:
         try:
             store = PGVector(
                 connection_string=CONNECTION_STRING,
-                embedding_function=embeddings_model,
+                embedding_function=emb,
                 collection_name="medical_records"
             )
             return store
@@ -230,7 +239,7 @@ def get_vectorstore():
     try:
         store = Chroma(
             persist_directory=CHROMA_DIR,
-            embedding_function=embeddings_model,
+            embedding_function=emb,
             collection_name="medical_records"
         )
         return store
@@ -329,7 +338,9 @@ def format_docs(docs):
 
 def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
     # Main search and answer logic using LangChain and RAG
-    if chat_model is None or embeddings_model is None:
+    model = get_chat_model()
+    emb = get_embeddings_model()
+    if model is None or emb is None:
         return {"error": "AI models not configured"}
 
     try:
@@ -356,7 +367,7 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
         history = format_history(user_id)
 
         # Ask the model
-        chain = MEDICAL_PROMPT | chat_model | StrOutputParser()
+        chain = MEDICAL_PROMPT | model | StrOutputParser()
         answer = chain.invoke({
             "context": context,
             "chat_history": history,
