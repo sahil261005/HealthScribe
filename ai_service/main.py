@@ -230,13 +230,13 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             if start_resp.status_code not in (200, 201, 202):
                 raise Exception(f"Failed to start job ({start_resp.status_code})")
             
-            # 5. Poll the status until completed
+            # 5. Poll the status until completed (max 30 seconds total)
             status_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/status"
-            max_polls = 50
+            max_polls = 20
             completed = False
             for attempt in range(max_polls):
-                time.sleep(3)
-                status_resp = requests.get(status_url, headers=headers, timeout=15)
+                time.sleep(1.5)
+                status_resp = requests.get(status_url, headers=headers, timeout=10)
                 if status_resp.status_code in (200, 201, 202):
                     resp_data = status_resp.json()
                     # Sarvam API returns "job_state" instead of "status"
@@ -253,7 +253,8 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                     logger.warning("Failed to check status: %s", status_resp.text)
             
             if not completed:
-                raise Exception("Job timed out")
+                logger.warning("Sarvam OCR timed out after 30s. Falling back to Gemini Direct Vision...")
+                raise Exception("Sarvam OCR timed out")
             
             # 6. Retrieve the results zip URL
             download_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/download-files"
