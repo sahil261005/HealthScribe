@@ -1922,3 +1922,48 @@ body {
 .btn-copy:hover {
   background-color: #2563eb;
 }
+
+/* Engine Selector Toggle */
+.engine-selector-group {
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engine-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.engine-toggle-row {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.btn-engine-tab {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-engine-tab:hover {
+  color: #1e293b;
+}
+
+.btn-engine-tab.active-engine {
+  background: white;
+  color: #0d9488;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}

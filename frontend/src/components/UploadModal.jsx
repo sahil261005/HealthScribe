@@ -8,6 +8,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [extractedData, setExtractedData] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
 
+    const [selectedEngine, setSelectedEngine] = useState('gemini');
+
     if (!isOpen) return null;
 
     const handleFileSelection = (event) => {
@@ -28,7 +30,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         try {
             const formData = new FormData();
             formData.append('uploaded_file', selectedFile);
-            const response = await aiService.post('/extract_data', formData, {
+            const response = await aiService.post(`/extract_data?engine=${selectedEngine}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             if (response.data.error) {
@@ -146,6 +148,26 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                             </div>
                         )}
                         
+                        <div className="engine-selector-group">
+                            <label className="engine-label">AI OCR Engine:</label>
+                            <div className="engine-toggle-row">
+                                <button
+                                    type="button"
+                                    className={`btn-engine-tab ${selectedEngine === 'gemini' ? 'active-engine' : ''}`}
+                                    onClick={() => setSelectedEngine('gemini')}
+                                >
+                                    ⚡ Fast Vision (Gemini 3s)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn-engine-tab ${selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
+                                    onClick={() => setSelectedEngine('hybrid')}
+                                >
+                                    🇮🇳 Sarvam AI (Indic Hybrid)
+                                </button>
+                            </div>
+                        </div>
+
                         <button
                             onClick={handleExtractData}
                             disabled={isLoading || !selectedFile}
