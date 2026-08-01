@@ -42,3 +42,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['id', 'username', 'email', 'known_allergies']
+
+
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        username_or_email = attrs.get("username", "")
+        password = attrs.get("password", "")
+
+        if "@" in username_or_email:
+            try:
+                user = User.objects.get(email__iexact=username_or_email)
+                attrs["username"] = user.username
+            except User.DoesNotExist:
+                pass
+
+        return super().validate(attrs)

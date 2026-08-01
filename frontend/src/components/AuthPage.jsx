@@ -93,10 +93,10 @@ function AuthPage() {
 
                         <form onSubmit={handleSubmit} className="auth-form">
                             <div className="auth-input-group">
-                                <label className="auth-label">Username</label>
+                                <label className="auth-label">{isLoginMode ? 'Username or Email' : 'Username'}</label>
                                 <input
                                     type="text"
-                                    placeholder="Enter your username"
+                                    placeholder={isLoginMode ? "Enter username or email" : "Enter your username"}
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
                                     required

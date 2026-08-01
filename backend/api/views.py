@@ -4,12 +4,17 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import MedicalRecord, HealthEntity, UserProfile, ShareableLink
-from .serializers import UserRegistrationSerializer, UserProfileSerializer
+from .serializers import UserRegistrationSerializer, UserProfileSerializer, EmailOrUsernameTokenObtainPairSerializer
 import requests
 import os
 
 logger = logging.getLogger("api")
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = EmailOrUsernameTokenObtainPairSerializer
 
 
 def serialize_record(record):
