@@ -156,14 +156,14 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                     className={`btn-engine-tab ${selectedEngine === 'gemini' ? 'active-engine' : ''}`}
                                     onClick={() => setSelectedEngine('gemini')}
                                 >
-                                    ⚡ Fast Vision (Gemini 3s)
+                                    Fast Vision (Gemini)
                                 </button>
                                 <button
                                     type="button"
                                     className={`btn-engine-tab ${selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
                                     onClick={() => setSelectedEngine('hybrid')}
                                 >
-                                    🇮🇳 Sarvam AI (Indic Hybrid)
+                                    Multilingual Indic OCR (Hybrid)
                                 </button>
                             </div>
                         </div>
