@@ -259,10 +259,6 @@ const Dashboard = () => {
                     <button onClick={handleShareProfile} disabled={isSharing} className="btn-share-profile">
                         {isSharing ? 'Sharing...' : 'Share Profile'}
                     </button>
-
-                    <button onClick={handleExportPDF} disabled={isExporting} className="btn-export">
-                        {isExporting ? 'Exporting...' : 'Export PDF'}
-                    </button>
                 </div>
             </div>
 
