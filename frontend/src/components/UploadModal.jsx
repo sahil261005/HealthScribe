@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { aiService } from '../api';
 import api from '../api';
-import './UploadModal.css';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [selectedFile, setSelectedFile] = useState(null);

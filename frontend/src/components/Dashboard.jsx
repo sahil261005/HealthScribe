@@ -3,7 +3,6 @@ import api from '../api';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import html2pdf from 'html2pdf.js';
 import MultiDoctorComparison from './MultiDoctorComparison';
-import './Dashboard.css';
 
 // custom tooltip for the doctor conflict chart
 const ConflictTooltip = ({ active, payload, label }) => {

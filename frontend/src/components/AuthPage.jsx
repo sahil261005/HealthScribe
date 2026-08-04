@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import './AuthPage.css';
 
 function AuthPage() {
     const [isLoginMode, setIsLoginMode] = useState(true);
