@@ -144,7 +144,6 @@ const Dashboard = ({ onUploadClick }) => {
             <div className="dashboard-container">
                 <h2 className="dashboard-title">Health Dashboard</h2>
                 <div className="empty-state">
-                    <div className="empty-state-icon">📋</div>
                     <h3 className="empty-title">No records yet</h3>
                     <p className="empty-text">Upload your first prescription to get started.</p>
                     <button onClick={onUploadClick} className="btn-empty-upload">

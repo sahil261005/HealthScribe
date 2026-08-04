@@ -88,17 +88,17 @@ function AppContent() {
                             </p>
                             <div className="home-actions">
                                 <button onClick={openUploadModal} className="btn-scan-now">
-                                    📷 Scan Prescription
+                                    Scan Prescription
                                 </button>
                                 <button onClick={() => setCurrentView('dashboard')} className="btn-view-dashboard">
-                                    📊 View Dashboard
+                                    View Dashboard
                                 </button>
                             </div>
                         </div>
 
                         <div className="home-features-grid">
                             <div className="home-feature-card">
-                                <div className="home-feature-icon">📷</div>
+                                <div className="home-feature-number">01</div>
                                 <h4 className="home-feature-title">Snap & Extract</h4>
                                 <p className="home-feature-text">
                                     Upload a prescription photo. AI reads handwritten text and extracts 
@@ -106,7 +106,7 @@ function AppContent() {
                                 </p>
                             </div>
                             <div className="home-feature-card">
-                                <div className="home-feature-icon">💬</div>
+                                <div className="home-feature-number">02</div>
                                 <h4 className="home-feature-title">Ask AI Assistant</h4>
                                 <p className="home-feature-text">
                                     Chat with your health data. Ask questions like "What was my last 
@@ -114,7 +114,7 @@ function AppContent() {
                                 </p>
                             </div>
                             <div className="home-feature-card">
-                                <div className="home-feature-icon">📊</div>
+                                <div className="home-feature-number">03</div>
                                 <h4 className="home-feature-title">Track & Compare</h4>
                                 <p className="home-feature-text">
                                     Visualize vitals over time, spot conflicting prescriptions across 

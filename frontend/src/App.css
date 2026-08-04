@@ -795,8 +795,10 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.home-feature-icon {
-  font-size: 32px;
+.home-feature-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: #c8e6d9;
   margin-bottom: 12px;
 }
 
