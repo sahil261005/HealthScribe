@@ -11,6 +11,7 @@ function AppContent() {
     const { user, isAuthenticated, isLoading, logout } = useAuth();
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+    const [currentView, setCurrentView] = useState('home');
 
     // bump the key to force dashboard to refetch after upload
     const handleUploadSuccess = () => {
@@ -37,9 +38,24 @@ function AppContent() {
     return (
         <div className="app-screen">
             <nav className="navbar">
-                <h1 className="brand-title" onClick={() => window.location.href = '/'}>HealthScribe</h1>
+                <h1 className="brand-title" onClick={() => setCurrentView('home')}>HealthScribe</h1>
                 
                 <div className="nav-actions">
+                    <div className="nav-tabs">
+                        <button 
+                            className={`nav-tab ${currentView === 'home' ? 'nav-tab-active' : ''}`}
+                            onClick={() => setCurrentView('home')}
+                        >
+                            Home
+                        </button>
+                        <button 
+                            className={`nav-tab ${currentView === 'dashboard' ? 'nav-tab-active' : ''}`}
+                            onClick={() => setCurrentView('dashboard')}
+                        >
+                            Dashboard
+                        </button>
+                    </div>
+
                     <div className="user-profile">
                         <div className="user-avatar">
                             {user?.username?.charAt(0).toUpperCase() || 'U'}
@@ -58,7 +74,58 @@ function AppContent() {
             </nav>
 
             <main className="main-content">
-                <Dashboard key={dashboardRefreshKey} />
+                {currentView === 'home' ? (
+                    <div className="home-welcome">
+                        <div className="home-hero">
+                            <div className="home-badge">AI-Powered Health Platform</div>
+                            <h2 className="home-tagline">
+                                Your prescriptions, <span className="home-highlight">digitized & searchable.</span>
+                            </h2>
+                            <p className="home-description">
+                                Snap a photo of any handwritten prescription. Our AI extracts medicines, 
+                                dosages, symptoms, and vitals — then lets you search your entire medical 
+                                history with a smart chatbot.
+                            </p>
+                            <div className="home-actions">
+                                <button onClick={openUploadModal} className="btn-scan-now">
+                                    📷 Scan Prescription
+                                </button>
+                                <button onClick={() => setCurrentView('dashboard')} className="btn-view-dashboard">
+                                    📊 View Dashboard
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="home-features-grid">
+                            <div className="home-feature-card">
+                                <div className="home-feature-icon">📷</div>
+                                <h4 className="home-feature-title">Snap & Extract</h4>
+                                <p className="home-feature-text">
+                                    Upload a prescription photo. AI reads handwritten text and extracts 
+                                    structured medical data in seconds.
+                                </p>
+                            </div>
+                            <div className="home-feature-card">
+                                <div className="home-feature-icon">💬</div>
+                                <h4 className="home-feature-title">Ask AI Assistant</h4>
+                                <p className="home-feature-text">
+                                    Chat with your health data. Ask questions like "What was my last 
+                                    BP reading?" and get instant answers.
+                                </p>
+                            </div>
+                            <div className="home-feature-card">
+                                <div className="home-feature-icon">📊</div>
+                                <h4 className="home-feature-title">Track & Compare</h4>
+                                <p className="home-feature-text">
+                                    Visualize vitals over time, spot conflicting prescriptions across 
+                                    doctors, and share reports via QR code.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <Dashboard key={dashboardRefreshKey} onUploadClick={openUploadModal} />
+                )}
             </main>
 
             <UploadModal 
