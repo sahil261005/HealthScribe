@@ -1,0 +1,335 @@
+/* ---------- upload modal ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.modal-container {
+  background: white;
+  border-radius: 10px;
+  width: 95%;
+  max-width: 960px;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #222;
+}
+
+.modal-subtitle {
+  font-size: 13px;
+  color: #999;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.btn-close:hover {
+  background: #f0f0f0;
+}
+
+.modal-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.upload-column {
+  width: 50%;
+  padding: 20px;
+  border-right: 1px solid #e0e0e0;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+}
+
+.verify-column {
+  width: 50%;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.dropzone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  background: white;
+}
+
+.dropzone:hover {
+  border-color: #1a8a6e;
+  background: #f0f8f5;
+}
+
+.dropzone-active {
+  border-color: #27ae60;
+  background: #f0f8f5;
+}
+
+.upload-icon {
+  display: block;
+  margin: 0 auto 8px;
+}
+
+.preview-container {
+  margin-top: 12px;
+  flex: 1;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.btn-extract-full {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* Engine Selector Toggle */
+.engine-selector-group {
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.engine-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.engine-toggle-row {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.btn-engine-tab {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-engine-tab:hover {
+  color: #1e293b;
+}
+
+.btn-engine-tab.active-engine {
+  background: white;
+  color: #0d9488;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* the colored boxes in the verify panel */
+.section-box {
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.section-blue {
+  background: #f0f8f5;
+  border: 1px solid #c8e6d9;
+}
+
+.section-purple {
+  background: #f8f4fc;
+  border: 1px solid #e6d8f0;
+}
+
+.section-green {
+  background: #f0f8f5;
+  border: 1px solid #c8e6d9;
+}
+
+.section-red {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.verify-section-title {
+  margin-bottom: 14px;
+}
+
+.btn-add {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #1a8a6e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.doctor-name-row {
+  margin-bottom: 14px;
+}
+
+.doctor-name-label {
+  width: 90px;
+  font-weight: 500;
+}
+
+.doctor-name-input {
+  flex: 1;
+}
+
+.dosage-input {
+  flex: 0 0 80px;
+}
+
+.mini-input {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  flex: 1;
+}
+
+.mini-input:focus {
+  outline: none;
+  border-color: #1a8a6e;
+}
+
+.vitals-edit-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.vital-edit-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vital-edit-label {
+  width: 60px;
+  font-weight: 500;
+}
+
+.allergies-edit-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-muted {
+  color: #999;
+}
+
+.modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #fafafa;
+}
+
+.btn-cancel {
+  padding: 8px 18px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-cancel:hover {
+  background: #f5f5f5;
+}
+
+.btn-save {
+  padding: 8px 18px;
+  background: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-save:hover {
+  background: #219a52;
+}
+
+.btn-save:disabled {
+  background: #bbb;
+  cursor: not-allowed;
+}

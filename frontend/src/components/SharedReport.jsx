@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import './SharedReport.css';
 
 const SharedReport = ({ token }) => {
     const [data, setData] = useState(null);

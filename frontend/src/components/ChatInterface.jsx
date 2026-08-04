@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { aiService } from '../api';
 import { useAuth } from '../context/AuthContext';
+import './ChatInterface.css';
 
 const ChatInterface = () => {
     const { user } = useAuth();
