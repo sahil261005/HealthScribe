@@ -5,6 +5,8 @@ import UploadModal from './components/UploadModal';
 import ChatInterface from './components/ChatInterface';
 import AuthPage from './components/AuthPage';
 import SharedReport from './components/SharedReport';
+import ShinyText from './components/ShinyText';
+import SpotlightCard from './components/SpotlightCard';
 import './App.css';
 
 function AppContent() {
@@ -79,7 +81,7 @@ function AppContent() {
                         <div className="home-hero">
                             <div className="home-badge">AI-Powered Health Platform</div>
                             <h2 className="home-tagline">
-                                Your prescriptions, <span className="home-highlight">digitized & searchable.</span>
+                                Your prescriptions, <ShinyText text="digitized & searchable." speed={4} />
                             </h2>
                             <p className="home-description">
                                 Snap a photo of any handwritten prescription. Our AI extracts medicines, 
@@ -97,30 +99,30 @@ function AppContent() {
                         </div>
 
                         <div className="home-features-grid">
-                            <div className="home-feature-card">
+                            <SpotlightCard className="home-feature-card">
                                 <div className="home-feature-number">01</div>
                                 <h4 className="home-feature-title">Snap & Extract</h4>
                                 <p className="home-feature-text">
                                     Upload a prescription photo. AI reads handwritten text and extracts 
                                     structured medical data in seconds.
                                 </p>
-                            </div>
-                            <div className="home-feature-card">
+                            </SpotlightCard>
+                            <SpotlightCard className="home-feature-card">
                                 <div className="home-feature-number">02</div>
                                 <h4 className="home-feature-title">Ask AI Assistant</h4>
                                 <p className="home-feature-text">
                                     Chat with your health data. Ask questions like "What was my last 
                                     BP reading?" and get instant answers.
                                 </p>
-                            </div>
-                            <div className="home-feature-card">
+                            </SpotlightCard>
+                            <SpotlightCard className="home-feature-card">
                                 <div className="home-feature-number">03</div>
                                 <h4 className="home-feature-title">Track & Compare</h4>
                                 <p className="home-feature-text">
                                     Visualize vitals over time, spot conflicting prescriptions across 
                                     doctors, and share reports via QR code.
                                 </p>
-                            </div>
+                            </SpotlightCard>
                         </div>
                     </div>
                 ) : (

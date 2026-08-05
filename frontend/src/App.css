@@ -722,8 +722,28 @@ body {
   margin-bottom: 16px;
 }
 
-.home-highlight {
+.shiny-text {
   color: #1a8a6e;
+  background: linear-gradient(
+    120deg,
+    rgba(26, 138, 110, 0.4) 0%,
+    rgba(26, 138, 110, 1) 50%,
+    rgba(26, 138, 110, 0.4) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline;
+  animation: shine linear infinite;
+}
+
+.shiny-text.disabled {
+  animation: none;
+}
+
+@keyframes shine {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .home-description {
