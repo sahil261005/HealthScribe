@@ -158,157 +158,36 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
     if engine != "gemini" and SARVAM_API_KEY:
         try:
             import requests
-            import time
-            import io
-            import zipfile
 
-            logger.info("Starting Sarvam OCR digitization...")
+            logger.info("Starting direct Sarvam Vision OCR...")
             
-            # 1. Create the digitization job
-            create_url = "https://api.sarvam.ai/doc-digitization/job/v1"
+            # 1. Direct Synchronous Sarvam Vision OCR call
+            sarvam_url = "https://api.sarvam.ai/vision/ocr"
             headers = {
-                "api-subscription-key": SARVAM_API_KEY,
-                "Content-Type": "application/json"
+                "api-subscription-key": SARVAM_API_KEY
             }
-            create_payload = {
-                "job_parameters": {
-                    "language": "en-IN",
-                    "output_format": "md"
-                }
+            files = {
+                "file": (uploaded_file.filename or "file.png", file_content, file_type)
             }
-            create_resp = requests.post(create_url, headers=headers, json=create_payload, timeout=20)
-            if create_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Create job failed ({create_resp.status_code}): {create_resp.text}")
-            
-            job_id = create_resp.json()["job_id"]
-            logger.info("Job created: %s", job_id)
-            
-            # 2. Request a presigned upload URL
-            # Sanitize the filename to avoid spaces/special characters
-            file_extension = os.path.splitext(uploaded_file.filename or "file.png")[1]
-            safe_filename = f"document{file_extension}"
-            
-            upload_init_url = "https://api.sarvam.ai/doc-digitization/job/v1/upload-files"
-            upload_payload = {
-                "job_id": job_id,
-                "files": [safe_filename]
+            data = {
+                "language_code": "en-IN"
             }
-            upload_init_resp = requests.post(upload_init_url, headers=headers, json=upload_payload, timeout=20)
-            if upload_init_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Failed to get upload URL: {upload_init_resp.text}")
             
-            upload_json = upload_init_resp.json()
-            presigned_url = None
-            if "upload_urls" in upload_json:
-                upload_urls_dict = upload_json["upload_urls"]
-                first_url_obj = list(upload_urls_dict.values())[0]
-                if isinstance(first_url_obj, dict):
-                    presigned_url = first_url_obj.get("url") or first_url_obj.get("file_url")
-                else:
-                    presigned_url = first_url_obj
-            elif "urls" in upload_json and upload_json["urls"]:
-                presigned_url = upload_json["urls"][0]
-                
-            if not presigned_url:
-                raise Exception(f"No upload URL found in response: {upload_json}")
+            resp = requests.post(sarvam_url, headers=headers, files=files, data=data, timeout=15)
             
-            # 3. PUT the file binary to the presigned url
-            put_headers = {"Content-Type": file_type}
-            if "blob.core.windows.net" in presigned_url:
-                put_headers["x-ms-blob-type"] = "BlockBlob"
-                
-            put_resp = requests.put(presigned_url, data=file_content, headers=put_headers, timeout=30)
-            if put_resp.status_code not in (200, 201, 202, 204):
-                raise Exception(f"Upload to storage failed ({put_resp.status_code})")
-            
-            # Give Azure storage a second to propagate the upload
-            time.sleep(1.5)
-            
-            # 4. Trigger the job to start
-            start_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/start"
-            start_resp = requests.post(start_url, headers=headers, timeout=20)
-            if start_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Failed to start job ({start_resp.status_code})")
-            
-            # 5. Poll the status until completed (max 30 seconds total)
-            status_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/status"
-            max_polls = 20
-            completed = False
-            for attempt in range(max_polls):
-                time.sleep(1.5)
-                status_resp = requests.get(status_url, headers=headers, timeout=10)
-                if status_resp.status_code in (200, 201, 202):
-                    resp_data = status_resp.json()
-                    # Sarvam API returns "job_state" instead of "status"
-                    job_state = resp_data.get("job_state", resp_data.get("status", ""))
-                    if job_state:
-                        job_state = job_state.lower()
-                    logger.info("Job %s status check %d: %s", job_id, attempt + 1, job_state)
-                    if job_state == "completed":
-                        completed = True
-                        break
-                    elif job_state in ("failed", "cancelled"):
-                        raise Exception(f"Job failed with status: {job_state}")
-                else:
-                    logger.warning("Failed to check status: %s", status_resp.text)
-            
-            if not completed:
-                logger.warning("Sarvam OCR timed out after 30s. Falling back to Gemini Direct Vision...")
-                raise Exception("Sarvam OCR timed out")
-            
-            # 6. Retrieve the results zip URL
-            download_url = f"https://api.sarvam.ai/doc-digitization/job/v1/{job_id}/download-files"
-            download_resp = requests.post(download_url, headers=headers, timeout=20)
-            if download_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Get download URL failed: {download_resp.text}")
-            
-            download_json = download_resp.json()
-            zip_download_url = None
-            if download_json.get("download_urls"):
-                download_urls_dict = download_json.get("download_urls", {})
-                first_val = list(download_urls_dict.values())[0]
-                if isinstance(first_val, dict):
-                    zip_download_url = first_val.get("url") or first_val.get("file_url")
-                else:
-                    zip_download_url = first_val
-            
-            if not zip_download_url:
-                zip_download_url = download_json.get("url")
-            if not zip_download_url and "urls" in download_json:
-                zip_download_url = download_json["urls"][0]
-                
-            if not zip_download_url:
-                raise Exception(f"No download URL found: {download_json}")
-                
-            zip_resp = requests.get(zip_download_url, timeout=30)
-            if zip_resp.status_code != 200:
-                raise Exception("Failed to download results zip")
-            
-            # 7. Unzip and parse the text content
-            with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as z:
-                text_content = ""
-                for filename in z.namelist():
-                    if filename.endswith(".md") or filename.endswith(".txt"):
-                        with z.open(filename) as f:
-                            text_content = f.read().decode("utf-8")
-                            break
-                
-                # Check for json outputs if no md/txt exists
-                if not text_content:
-                    for filename in z.namelist():
-                        if filename.endswith(".json"):
-                            with z.open(filename) as f:
-                                json_data = json.loads(f.read().decode("utf-8"))
-                                text_content = json.dumps(json_data)
-                                break
-            
-            if text_content:
-                sarvam_text = text_content
-                logger.info("Sarvam OCR finished successfully.")
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                # Extract text from response (supports 'text', 'extracted_text', or 'parsed_text')
+                sarvam_text = resp_json.get("text") or resp_json.get("extracted_text") or str(resp_json)
+                logger.info("Direct Sarvam Vision OCR finished successfully in 1 call!")
             else:
-                raise Exception("No text files found inside the results zip.")
+                logger.warning("Direct Sarvam Vision OCR failed HTTP %d: %s. Trying legacy endpoint...", resp.status_code, resp.text)
+                # Fallback to direct text if JSON contains raw text or html
+                if resp.text:
+                    sarvam_text = resp.text
+
         except Exception as e:
-            logger.warning("Sarvam OCR failed. Falling back to Gemini direct vision: %s", e)
+            logger.warning("Sarvam Vision OCR failed. Falling back to Gemini direct vision: %s", e)
 
     # Use Gemini to parse the output text or image into structured JSON
     ai_response = None
