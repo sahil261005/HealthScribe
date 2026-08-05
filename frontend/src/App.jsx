@@ -5,7 +5,6 @@ import UploadModal from './components/UploadModal';
 import ChatInterface from './components/ChatInterface';
 import AuthPage from './components/AuthPage';
 import SharedReport from './components/SharedReport';
-import ShinyText from './components/ShinyText';
 import SpotlightCard from './components/SpotlightCard';
 import './App.css';
 
@@ -81,12 +80,13 @@ function AppContent() {
                         <div className="home-hero">
                             <div className="home-badge">AI-Powered Health Platform</div>
                             <h2 className="home-tagline">
-                                Your prescriptions, <ShinyText text="digitized & searchable." speed={4} />
+                                Your prescriptions,{' '}
+                                <span className="home-highlight">digitized & searchable.</span>
                             </h2>
                             <p className="home-description">
-                                Snap a photo of any handwritten prescription. Our AI extracts medicines, 
+                                Upload a photo of any handwritten prescription. Our AI extracts medicines, 
                                 dosages, symptoms, and vitals — then lets you search your entire medical 
-                                history with a smart chatbot.
+                                history instantly.
                             </p>
                             <div className="home-actions">
                                 <button onClick={openUploadModal} className="btn-scan-now">
@@ -98,31 +98,64 @@ function AppContent() {
                             </div>
                         </div>
 
+                        <div className="home-stats-row">
+                            <div className="home-stat">
+                                <span className="home-stat-number">~3s</span>
+                                <span className="home-stat-label">Avg extraction time</span>
+                            </div>
+                            <div className="home-stat-divider"></div>
+                            <div className="home-stat">
+                                <span className="home-stat-number">Multi-Engine</span>
+                                <span className="home-stat-label">OCR with fallback</span>
+                            </div>
+                            <div className="home-stat-divider"></div>
+                            <div className="home-stat">
+                                <span className="home-stat-number">RAG Search</span>
+                                <span className="home-stat-label">AI-powered Q&A</span>
+                            </div>
+                        </div>
+
+                        <div className="home-section-header">
+                            <h3 className="home-section-title">How It Works</h3>
+                            <p className="home-section-subtitle">Three steps to a fully searchable medical history</p>
+                        </div>
+
                         <div className="home-features-grid">
                             <SpotlightCard className="home-feature-card">
-                                <div className="home-feature-number">01</div>
+                                <div className="home-feature-step">Step 1</div>
                                 <h4 className="home-feature-title">Snap & Extract</h4>
                                 <p className="home-feature-text">
-                                    Upload a prescription photo. AI reads handwritten text and extracts 
-                                    structured medical data in seconds.
+                                    Upload a prescription photo. Our multi-engine OCR pipeline reads 
+                                    handwritten text and extracts structured medical data — medicines, 
+                                    dosages, symptoms, and vitals.
                                 </p>
                             </SpotlightCard>
                             <SpotlightCard className="home-feature-card">
-                                <div className="home-feature-number">02</div>
+                                <div className="home-feature-step">Step 2</div>
                                 <h4 className="home-feature-title">Ask AI Assistant</h4>
                                 <p className="home-feature-text">
-                                    Chat with your health data. Ask questions like "What was my last 
-                                    BP reading?" and get instant answers.
+                                    Chat with your health data using our RAG-powered assistant. Ask 
+                                    questions like "What was my last BP reading?" or "List all 
+                                    antibiotics I've taken" and get instant answers.
                                 </p>
                             </SpotlightCard>
                             <SpotlightCard className="home-feature-card">
-                                <div className="home-feature-number">03</div>
-                                <h4 className="home-feature-title">Track & Compare</h4>
+                                <div className="home-feature-step">Step 3</div>
+                                <h4 className="home-feature-title">Track & Share</h4>
                                 <p className="home-feature-text">
-                                    Visualize vitals over time, spot conflicting prescriptions across 
-                                    doctors, and share reports via QR code.
+                                    View vitals over time, detect conflicting prescriptions across 
+                                    doctors, export PDF reports, and share your medical profile 
+                                    securely via unique links.
                                 </p>
                             </SpotlightCard>
+                        </div>
+
+                        <div className="home-cta-banner">
+                            <h3 className="home-cta-title">Ready to digitize your prescriptions?</h3>
+                            <p className="home-cta-text">Upload your first prescription and see AI extraction in action.</p>
+                            <button onClick={openUploadModal} className="btn-scan-now">
+                                Get Started
+                            </button>
                         </div>
                     </div>
                 ) : (
