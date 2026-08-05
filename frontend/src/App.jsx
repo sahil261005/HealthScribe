@@ -6,6 +6,7 @@ import ChatInterface from './components/ChatInterface';
 import AuthPage from './components/AuthPage';
 import SharedReport from './components/SharedReport';
 import SpotlightCard from './components/SpotlightCard';
+import TypewriterText from './components/TypewriterText';
 import './App.css';
 
 function AppContent() {
@@ -80,13 +81,12 @@ function AppContent() {
                         <div className="home-hero">
                             <div className="home-badge">AI-Powered Health Platform</div>
                             <h2 className="home-tagline">
-                                Your prescriptions,{' '}
-                                <span className="home-highlight">digitized & searchable.</span>
+                                Your prescriptions, <TypewriterText />
                             </h2>
                             <p className="home-description">
-                                Upload a photo of any handwritten prescription. Our AI extracts medicines, 
-                                dosages, symptoms, and vitals — then lets you search your entire medical 
-                                history instantly.
+                                Prescriptions pile up. Details get lost. HealthScribe turns every 
+                                handwritten prescription into structured, searchable health data 
+                                you can actually use.
                             </p>
                             <div className="home-actions">
                                 <button onClick={openUploadModal} className="btn-scan-now">
@@ -95,23 +95,6 @@ function AppContent() {
                                 <button onClick={() => setCurrentView('dashboard')} className="btn-view-dashboard">
                                     View Dashboard
                                 </button>
-                            </div>
-                        </div>
-
-                        <div className="home-stats-row">
-                            <div className="home-stat">
-                                <span className="home-stat-number">~3s</span>
-                                <span className="home-stat-label">Avg extraction time</span>
-                            </div>
-                            <div className="home-stat-divider"></div>
-                            <div className="home-stat">
-                                <span className="home-stat-number">Multi-Engine</span>
-                                <span className="home-stat-label">OCR with fallback</span>
-                            </div>
-                            <div className="home-stat-divider"></div>
-                            <div className="home-stat">
-                                <span className="home-stat-number">RAG Search</span>
-                                <span className="home-stat-label">AI-powered Q&A</span>
                             </div>
                         </div>
 
