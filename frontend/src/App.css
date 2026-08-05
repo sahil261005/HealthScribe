@@ -726,15 +726,17 @@ body {
   color: #1a8a6e;
   background: linear-gradient(
     120deg,
-    rgba(26, 138, 110, 0.4) 0%,
-    rgba(26, 138, 110, 1) 50%,
-    rgba(26, 138, 110, 0.4) 100%
+    #1a8a6e 0%,
+    #52d4b2 35%,
+    #ffffff 50%,
+    #52d4b2 65%,
+    #1a8a6e 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  display: inline;
-  animation: shine linear infinite;
+  display: inline-block;
+  animation: shine 3s linear infinite;
 }
 
 .shiny-text.disabled {
