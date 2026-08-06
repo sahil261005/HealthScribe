@@ -7,6 +7,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [extractedData, setExtractedData] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
+    const [fileInputKey, setFileInputKey] = useState(0);
 
     const [selectedEngine, setSelectedEngine] = useState('gemini');
 
@@ -15,6 +16,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         setExtractedData(null);
         setErrorMessage('');
         setIsLoading(false);
+        setFileInputKey(prev => prev + 1);
     };
 
     useEffect(() => {
@@ -138,6 +140,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                     <div className="upload-column">
                         <div className={`dropzone ${selectedFile ? 'dropzone-active' : ''}`}>
                             <input
+                                key={fileInputKey}
                                 type="file"
                                 accept="image/*,application/pdf"
                                 onChange={handleFileSelection}
