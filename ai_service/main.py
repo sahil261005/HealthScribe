@@ -154,42 +154,60 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
     3. Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
     """
 
-    # Define the extraction schema for Sarvam Extract API
+    # Define the extraction schema for Sarvam Extract API (generated via Sarvam Playground)
     sarvam_schema = json.dumps({
-        "doctor_name": {
-            "type": "string",
-            "description": "Full name of the doctor who wrote the prescription, in English"
-        },
-        "medicines": {
-            "type": "array",
-            "description": "List of medicines prescribed, in English",
-            "items": {
+        "type": "object",
+        "properties": {
+            "doctor_name": {
+                "type": "string",
+                "description": "The full name of the medical practitioner issuing the prescription."
+            },
+            "patient_info": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Medicine name in English"},
-                    "dosage": {"type": "string", "description": "Dosage and frequency in English"},
-                    "reason": {"type": "string", "description": "Reason or condition this medicine is for, in English"}
+                    "name": {"type": "string", "description": "The name of the patient as written on the prescription."},
+                    "age": {"type": "string", "description": "The age of the patient as written on the prescription."}
                 }
+            },
+            "prescription_date": {
+                "type": "string",
+                "description": "The date the prescription was issued."
+            },
+            "medicines": {
+                "type": "array",
+                "description": "A list of all medications prescribed to the patient.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "medicine_name": {"type": "string", "description": "The name of the prescribed medication."},
+                        "dosage": {"type": "string", "description": "The strength or dosage of the medication."},
+                        "frequency": {"type": "string", "description": "The timing and frequency of the medication intake."}
+                    }
+                }
+            },
+            "diagnoses": {
+                "type": "array",
+                "description": "Medical conditions or diagnoses noted by the doctor.",
+                "items": {"type": "string"}
+            },
+            "vitals": {
+                "type": "object",
+                "description": "Patient vital signs recorded on the document.",
+                "properties": {
+                    "blood_pressure": {"type": "string", "description": "Recorded blood pressure reading."},
+                    "pulse_rate": {"type": "string", "description": "Recorded pulse rate."},
+                    "temperature": {"type": "string", "description": "Recorded body temperature."}
+                }
+            },
+            "allergies": {
+                "type": "array",
+                "description": "List of patient allergies noted on the prescription.",
+                "items": {"type": "string"}
+            },
+            "additional_instructions": {
+                "type": "string",
+                "description": "Any additional notes or instructions provided by the doctor."
             }
-        },
-        "symptoms": {
-            "type": "array",
-            "description": "Patient symptoms or diagnosis written by the doctor, translated to English",
-            "items": {"type": "string"}
-        },
-        "vitals": {
-            "type": "object",
-            "description": "Patient vitals recorded on the prescription",
-            "properties": {
-                "bp": {"type": "string", "description": "Blood pressure reading"},
-                "pulse": {"type": "string", "description": "Pulse rate"},
-                "temp": {"type": "string", "description": "Body temperature"}
-            }
-        },
-        "allergies": {
-            "type": "array",
-            "description": "Any allergies noted on the prescription, in English",
-            "items": {"type": "string"}
         }
     })
 
@@ -211,7 +229,8 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                 data={
                     "schema": sarvam_schema,
                     "language": "en-IN",
-                    "output_format": "json"
+                    "output_format": "json",
+                    "model": "sarvam-vision-v1"
                 },
                 timeout=20
             )
@@ -256,13 +275,37 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             raw = results_resp.json()
             logger.info("Sarvam Extract returned structured JSON successfully.")
 
-            # Normalise the response into our schema
+            # Normalise the response into our standard frontend schema
             extracted = raw if isinstance(raw, dict) else (raw[0] if isinstance(raw, list) and raw else {})
+            
+            # Map medicine objects safely
+            parsed_medicines = []
+            for item in extracted.get("medicines", []):
+                if isinstance(item, dict):
+                    m_name = item.get("medicine_name") or item.get("name", "")
+                    m_dosage = item.get("dosage", "")
+                    m_freq = item.get("frequency", "")
+                    full_dosage = f"{m_dosage} {m_freq}".strip() if m_freq else m_dosage
+                    parsed_medicines.append({
+                        "name": m_name,
+                        "dosage": full_dosage,
+                        "reason": item.get("reason", "")
+                    })
+
+            vitals_raw = extracted.get("vitals") or {}
+            bp_val = vitals_raw.get("blood_pressure") or vitals_raw.get("bp", "")
+            pulse_val = vitals_raw.get("pulse_rate") or vitals_raw.get("pulse", "")
+            temp_val = vitals_raw.get("temperature") or vitals_raw.get("temp", "")
+
             result = {
                 "doctor_name": extracted.get("doctor_name", ""),
-                "medicines": extracted.get("medicines", []),
-                "symptoms": extracted.get("symptoms", []),
-                "vitals": extracted.get("vitals", {"bp": "", "pulse": "", "temp": ""}),
+                "medicines": parsed_medicines,
+                "symptoms": extracted.get("diagnoses") or extracted.get("symptoms", []),
+                "vitals": {
+                    "bp": bp_val,
+                    "pulse": pulse_val,
+                    "temp": temp_val
+                },
                 "allergies": extracted.get("allergies", []),
                 "ocr_engine": "Sarvam AI"
             }
