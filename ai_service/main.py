@@ -154,46 +154,128 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
     3. Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
     """
 
-    sarvam_text = None
+    # Define the extraction schema for Sarvam Extract API
+    sarvam_schema = json.dumps({
+        "doctor_name": {
+            "type": "string",
+            "description": "Full name of the doctor who wrote the prescription, in English"
+        },
+        "medicines": {
+            "type": "array",
+            "description": "List of medicines prescribed, in English",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Medicine name in English"},
+                    "dosage": {"type": "string", "description": "Dosage and frequency in English"},
+                    "reason": {"type": "string", "description": "Reason or condition this medicine is for, in English"}
+                }
+            }
+        },
+        "symptoms": {
+            "type": "array",
+            "description": "Patient symptoms or diagnosis written by the doctor, translated to English",
+            "items": {"type": "string"}
+        },
+        "vitals": {
+            "type": "object",
+            "description": "Patient vitals recorded on the prescription",
+            "properties": {
+                "bp": {"type": "string", "description": "Blood pressure reading"},
+                "pulse": {"type": "string", "description": "Pulse rate"},
+                "temp": {"type": "string", "description": "Body temperature"}
+            }
+        },
+        "allergies": {
+            "type": "array",
+            "description": "Any allergies noted on the prescription, in English",
+            "items": {"type": "string"}
+        }
+    })
+
+    # --- HYBRID ENGINE: Sarvam Extract API ---
     if engine != "gemini" and SARVAM_API_KEY:
         try:
             import requests
+            import time
 
-            logger.info("Starting direct Sarvam Vision OCR...")
-            
-            # 1. Direct Synchronous Sarvam Vision OCR call
-            sarvam_url = "https://api.sarvam.ai/vision/ocr"
-            headers = {
-                "api-subscription-key": SARVAM_API_KEY
+            logger.info("ENGINE: HYBRID — Submitting to Sarvam Extract API (doc-ai/v1/job/extract)...")
+
+            headers = {"api-subscription-key": SARVAM_API_KEY}
+
+            # Step 1: Submit the extraction job with file + schema in one multipart POST
+            submit_resp = requests.post(
+                "https://api.sarvam.ai/doc-ai/v1/job/extract",
+                headers=headers,
+                files={"file": (uploaded_file.filename or "prescription.jpg", file_content, file_type)},
+                data={
+                    "schema": sarvam_schema,
+                    "language": "en-IN",
+                    "output_format": "json"
+                },
+                timeout=20
+            )
+
+            if submit_resp.status_code not in (200, 201, 202):
+                raise Exception(f"Sarvam Extract job submit failed ({submit_resp.status_code}): {submit_resp.text}")
+
+            job_id = submit_resp.json().get("job_id")
+            if not job_id:
+                raise Exception(f"No job_id in Sarvam response: {submit_resp.json()}")
+
+            logger.info("Sarvam Extract job created: %s", job_id)
+
+            # Step 2: Poll status until completed
+            status_url = f"https://api.sarvam.ai/doc-ai/v1/job/{job_id}/status"
+            completed = False
+            for attempt in range(20):
+                time.sleep(1.5)
+                status_resp = requests.get(status_url, headers=headers, timeout=10)
+                if status_resp.status_code == 200:
+                    job_state = (status_resp.json().get("job_state") or status_resp.json().get("status") or "").lower()
+                    logger.info("Sarvam job %s poll %d: %s", job_id, attempt + 1, job_state)
+                    if job_state == "completed":
+                        completed = True
+                        break
+                    elif job_state in ("failed", "cancelled"):
+                        raise Exception(f"Sarvam job failed with state: {job_state}")
+
+            if not completed:
+                raise Exception("Sarvam Extract API timed out after polling")
+
+            # Step 3: Fetch structured JSON results directly
+            results_resp = requests.get(
+                f"https://api.sarvam.ai/doc-ai/v1/job/{job_id}/results",
+                headers=headers,
+                timeout=15
+            )
+
+            if results_resp.status_code != 200:
+                raise Exception(f"Sarvam results fetch failed ({results_resp.status_code}): {results_resp.text}")
+
+            raw = results_resp.json()
+            logger.info("Sarvam Extract returned structured JSON successfully.")
+
+            # Normalise the response into our schema
+            extracted = raw if isinstance(raw, dict) else (raw[0] if isinstance(raw, list) and raw else {})
+            result = {
+                "doctor_name": extracted.get("doctor_name", ""),
+                "medicines": extracted.get("medicines", []),
+                "symptoms": extracted.get("symptoms", []),
+                "vitals": extracted.get("vitals", {"bp": "", "pulse": "", "temp": ""}),
+                "allergies": extracted.get("allergies", []),
+                "ocr_engine": "Sarvam AI"
             }
-            files = {
-                "file": (uploaded_file.filename or "file.png", file_content, file_type)
-            }
-            data = {
-                "language_code": "en-IN"
-            }
-            
-            resp = requests.post(sarvam_url, headers=headers, files=files, data=data, timeout=15)
-            
-            if resp.status_code == 200:
-                resp_json = resp.json()
-                # Extract text from response (supports 'text', 'extracted_text', or 'parsed_text')
-                sarvam_text = resp_json.get("text") or resp_json.get("extracted_text") or str(resp_json)
-                logger.info("Direct Sarvam Vision OCR finished successfully in 1 call!")
-            else:
-                logger.warning("Direct Sarvam Vision OCR failed HTTP %d: %s. Trying legacy endpoint...", resp.status_code, resp.text)
-                # Fallback to direct text if JSON contains raw text or html
-                if resp.text:
-                    sarvam_text = resp.text
+            return result
 
         except Exception as e:
-            logger.warning("Sarvam Vision OCR failed. Falling back to Gemini direct vision: %s", e)
+            logger.error("Sarvam Extract API failed, falling back to Gemini: %s", e)
 
-    # Use Gemini to parse the output text or image into structured JSON
-    ai_response = None
+    # --- GEMINI ENGINE (Fast Vision or Sarvam fallback) ---
     try:
+        logger.info("ENGINE: GEMINI — Running Direct Vision extraction...")
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
+
         json_schema = {
             "type": "object",
             "properties": {
@@ -210,10 +292,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                         "required": ["name", "dosage", "reason"]
                     }
                 },
-                "symptoms": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                },
+                "symptoms": {"type": "array", "items": {"type": "string"}},
                 "vitals": {
                     "type": "object",
                     "properties": {
@@ -223,10 +302,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                     },
                     "required": ["bp", "pulse", "temp"]
                 },
-                "allergies": {
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
+                "allergies": {"type": "array", "items": {"type": "string"}}
             },
             "required": ["doctor_name", "medicines", "symptoms", "vitals", "allergies"]
         }
@@ -236,25 +312,18 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             "response_schema": json_schema
         }
 
-        if sarvam_text:
-            ai_response = model.generate_content(
-                f"{extraction_prompt}\n\nTEXT CONTENT:\n{sarvam_text}",
-                generation_config=config
-            )
-        else:
-            logger.info("Running Gemini vision direct upload...")
-            ai_response = model.generate_content([
-                {"mime_type": file_type, "data": file_content},
-                extraction_prompt,
-            ], generation_config=config)
+        ai_response = model.generate_content([
+            {"mime_type": file_type, "data": file_content},
+            extraction_prompt,
+        ], generation_config=config)
 
         result = json.loads(ai_response.text)
-        result["ocr_engine"] = "Sarvam AI" if sarvam_text else "Gemini"
+        result["ocr_engine"] = "Gemini"
         return result
 
     except json.JSONDecodeError:
         raw = ai_response.text if ai_response else "no response"
-        logger.error("Gemini returned invalid JSON structure: %s", raw)
+        logger.error("Gemini returned invalid JSON: %s", raw)
         raise HTTPException(status_code=422, detail="Failed to parse structured JSON from model.")
     except Exception as e:
         logger.exception("AI Extraction failed: %s", e)
