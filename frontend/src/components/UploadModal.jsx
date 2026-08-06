@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { aiService } from '../api';
 import api from '../api';
 
@@ -10,39 +10,24 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
     const [selectedEngine, setSelectedEngine] = useState('gemini');
 
-    if (!isOpen) return null;
-
-    const handleFileSelection = (event) => {
-        const file = event.target.files[0];
-        setSelectedFile(file);
+    const resetModalState = () => {
+        setSelectedFile(null);
         setExtractedData(null);
         setErrorMessage('');
+        setIsLoading(false);
     };
 
-    // send the file to the AI service for extraction
-    const handleExtractData = async () => {
-        if (!selectedFile) {
-            setErrorMessage('Please select a file first.');
-            return;
+    useEffect(() => {
+        if (isOpen) {
+            resetModalState();
         }
-        setIsLoading(true);
-        setErrorMessage('');
-        try {
-            const formData = new FormData();
-            formData.append('uploaded_file', selectedFile);
-            const response = await aiService.post(`/extract_data?engine=${selectedEngine}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            if (response.data.error) {
-                setErrorMessage('AI Error: ' + response.data.error);
-                return;
-            }
-            setExtractedData(response.data);
-        } catch {
-            setErrorMessage('Failed to extract data. Is the AI service running?');
-        } finally {
-            setIsLoading(false);
-        }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleClose = () => {
+        resetModalState();
+        onClose();
     };
 
     // save the verified data to django
@@ -54,6 +39,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
             if (response.data.warnings && response.data.warnings.length > 0) {
                 alert('Record saved with warnings:\n' + response.data.warnings.join('\n'));
             }
+            resetModalState();
             onUploadSuccess();
             onClose();
         } catch {
@@ -103,6 +89,39 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         });
     };
 
+    const handleFileSelection = (event) => {
+        const file = event.target.files[0];
+        setSelectedFile(file);
+        setExtractedData(null);
+        setErrorMessage('');
+    };
+
+    // send the file to the AI service for extraction
+    const handleExtractData = async () => {
+        if (!selectedFile) {
+            setErrorMessage('Please select a file first.');
+            return;
+        }
+        setIsLoading(true);
+        setErrorMessage('');
+        try {
+            const formData = new FormData();
+            formData.append('uploaded_file', selectedFile);
+            const response = await aiService.post(`/extract_data?engine=${selectedEngine}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            if (response.data.error) {
+                setErrorMessage('AI Error: ' + response.data.error);
+                return;
+            }
+            setExtractedData(response.data);
+        } catch {
+            setErrorMessage('Failed to extract data. Is the AI service running?');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <div className="modal-overlay">
             <div className="modal-container">
@@ -111,7 +130,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                         <h2 className="modal-title">Upload Medical Record</h2>
                         <p className="modal-subtitle">Upload a prescription or report to extract data</p>
                     </div>
-                    <button onClick={onClose} className="btn-close">✕</button>
+                    <button onClick={handleClose} className="btn-close">✕</button>
                 </div>
                 
                 <div className="modal-body">
@@ -291,7 +310,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 </div>
 
                 <div className="modal-footer">
-                    <button onClick={onClose} className="btn-cancel">Cancel</button>
+                    <button onClick={handleClose} className="btn-cancel">Cancel</button>
                     <button
                         onClick={handleSaveData}
                         disabled={!extractedData || isLoading}
