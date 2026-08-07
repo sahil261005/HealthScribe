@@ -164,6 +164,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             },
             "patient_info": {
                 "type": "object",
+                "description": "Patient demographic information from the prescription.",
                 "properties": {
                     "name": {"type": "string", "description": "The name of the patient as written on the prescription."},
                     "age": {"type": "string", "description": "The age of the patient as written on the prescription."}
@@ -178,6 +179,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                 "description": "A list of all medications prescribed to the patient.",
                 "items": {
                     "type": "object",
+                    "description": "A single prescribed medication entry.",
                     "properties": {
                         "medicine_name": {"type": "string", "description": "The name of the prescribed medication."},
                         "dosage": {"type": "string", "description": "The strength or dosage of the medication."},
@@ -188,7 +190,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             "diagnoses": {
                 "type": "array",
                 "description": "Medical conditions or diagnoses noted by the doctor.",
-                "items": {"type": "string"}
+                "items": {"type": "string", "description": "A single diagnosis or medical condition."}
             },
             "vitals": {
                 "type": "object",
@@ -202,7 +204,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             "allergies": {
                 "type": "array",
                 "description": "List of patient allergies noted on the prescription.",
-                "items": {"type": "string"}
+                "items": {"type": "string", "description": "A single allergy noted on the prescription."}
             },
             "additional_instructions": {
                 "type": "string",
