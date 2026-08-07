@@ -275,10 +275,11 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                 raise Exception(f"Sarvam results fetch failed ({results_resp.status_code}): {results_resp.text}")
 
             raw = results_resp.json()
-            logger.info("Sarvam Extract returned structured JSON successfully.")
+            logger.info("Sarvam Extract RAW response: %s", json.dumps(raw, indent=2, default=str)[:2000])
 
             # Normalise the response into our standard frontend schema
             extracted = raw if isinstance(raw, dict) else (raw[0] if isinstance(raw, list) and raw else {})
+            logger.info("Sarvam extracted keys: %s", list(extracted.keys()) if isinstance(extracted, dict) else type(extracted))
             
             # Map medicine objects safely
             parsed_medicines = []
