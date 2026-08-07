@@ -275,24 +275,24 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
                 raise Exception(f"Sarvam results fetch failed ({results_resp.status_code}): {results_resp.text}")
 
             raw = results_resp.json()
-            logger.info("Sarvam Extract RAW response: %s", json.dumps(raw, indent=2, default=str)[:2000])
+            logger.info("Sarvam Extract returned structured JSON successfully.")
 
-            # Normalise the response into our standard frontend schema
-            extracted = raw if isinstance(raw, dict) else (raw[0] if isinstance(raw, list) and raw else {})
-            logger.info("Sarvam extracted keys: %s", list(extracted.keys()) if isinstance(extracted, dict) else type(extracted))
+            # Sarvam wraps extracted fields inside "result" key
+            result_data = raw.get("result", raw) if isinstance(raw, dict) else raw
+            extracted = result_data if isinstance(result_data, dict) else (result_data[0] if isinstance(result_data, list) and result_data else {})
             
-            # Map medicine objects safely
+            # Map medicine objects safely (handle null values from Sarvam)
             parsed_medicines = []
             for item in extracted.get("medicines", []):
                 if isinstance(item, dict):
-                    m_name = item.get("medicine_name") or item.get("name", "")
-                    m_dosage = item.get("dosage", "")
-                    m_freq = item.get("frequency", "")
-                    full_dosage = f"{m_dosage} {m_freq}".strip() if m_freq else m_dosage
+                    m_name = item.get("medicine_name") or item.get("name") or ""
+                    m_dosage = item.get("dosage") or ""
+                    m_freq = item.get("frequency") or ""
+                    full_dosage = f"{m_dosage} {m_freq}".strip() if (m_dosage or m_freq) else ""
                     parsed_medicines.append({
                         "name": m_name,
                         "dosage": full_dosage,
-                        "reason": item.get("reason", "")
+                        "reason": item.get("reason") or ""
                     })
 
             vitals_raw = extracted.get("vitals") or {}
