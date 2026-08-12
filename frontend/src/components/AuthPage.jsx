@@ -75,7 +75,7 @@ function AuthPage() {
                             <span className="auth-feature-icon">3</span>
                             <div className="auth-feature-text">
                                 <div className="auth-feature-title">Share Securely</div>
-                                Generate a private link to share any record with your doctor or family — no account needed on their end.
+                                Generate a private link to share any record with your doctor or family, no account needed on their end.
                             </div>
                         </div>
                     </div>

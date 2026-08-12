@@ -706,14 +706,13 @@ body {
 
 .home-badge {
   display: inline-block;
-  padding: 5px 16px;
-  background: #e8f5f0;
-  color: #1a8a6e;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 20px;
-  margin-bottom: 20px;
-  letter-spacing: 0.5px;
+  padding: 0;
+  background: transparent;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  letter-spacing: 1px;
   text-transform: uppercase;
 }
 

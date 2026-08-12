@@ -205,29 +205,29 @@ function AppContent() {
                             <p className="font-body-md text-body-md text-on-surface-variant mb-xl text-center">A seamless pipeline from paper to structured intelligence.</p>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-md w-full">
                                 {/* Step 1 */}
-                                <div className="bg-surface-container-lowest border-l-4 border-on-tertiary-container rounded-r-xl border-t border-b border-r border-outline-variant/50 p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-xl p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
                                     <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                         <span className="material-symbols-outlined" style={{fontSize: '120px'}}>document_scanner</span>
                                     </div>
-                                    <div className="font-label-sm text-label-sm text-on-tertiary-container uppercase tracking-wider mb-2">Step 1</div>
+                                    <div className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-2">Step 1</div>
                                     <h3 className="font-headline-sm text-headline-sm text-on-surface mb-3">Snap &amp; Extract</h3>
                                     <p className="font-body-sm text-body-sm text-on-surface-variant relative z-10">Upload a photo. Our AI reads handwriting and extracts structured data — medicines, dosages, and vitals with clinical precision.</p>
                                 </div>
                                 {/* Step 2 */}
-                                <div className="bg-surface-container-lowest border-l-4 border-secondary rounded-r-xl border-t border-b border-r border-outline-variant/50 p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-xl p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
                                     <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                         <span className="material-symbols-outlined" style={{fontSize: '120px'}}>forum</span>
                                     </div>
-                                    <div className="font-label-sm text-label-sm text-secondary uppercase tracking-wider mb-2">Step 2</div>
+                                    <div className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-2">Step 2</div>
                                     <h3 className="font-headline-sm text-headline-sm text-on-surface mb-3">Ask AI Assistant</h3>
                                     <p className="font-body-sm text-body-sm text-on-surface-variant relative z-10">Chat with your data. Ask things like "What was my last BP reading?" or "Summarize my medications" for instant clarity.</p>
                                 </div>
                                 {/* Step 3 */}
-                                <div className="bg-surface-container-lowest border-l-4 border-primary rounded-r-xl border-t border-b border-r border-outline-variant/50 p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                                <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-xl p-md shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
                                     <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                         <span className="material-symbols-outlined" style={{fontSize: '120px'}}>share</span>
                                     </div>
-                                    <div className="font-label-sm text-label-sm text-primary uppercase tracking-wider mb-2">Step 3</div>
+                                    <div className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-2">Step 3</div>
                                     <h3 className="font-headline-sm text-headline-sm text-on-surface mb-3">Track &amp; Share</h3>
                                     <p className="font-body-sm text-body-sm text-on-surface-variant relative z-10">View trends over time and share secure links with your doctor to ensure consistent care across providers.</p>
                                 </div>
@@ -237,7 +237,7 @@ function AppContent() {
                         {/* ── CTA Banner ── */}
                         <section className="w-full max-w-4xl mx-auto mb-xl">
                             <div className="bg-surface-bright border border-outline-variant/30 rounded-2xl p-xl flex flex-col items-center text-center relative overflow-hidden shadow-sm">
-                                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-on-tertiary-container via-secondary to-primary opacity-80" />
+
                                 <h2 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-4 relative z-10">
                                     Ready to take control of your health records?
                                 </h2>
@@ -260,23 +260,6 @@ function AppContent() {
                 )}
             </main>
 
-            {/* ── Footer ── */}
-            {currentView === 'home' && (
-                <footer className="bg-surface-container border-t border-outline-variant w-full mt-auto">
-                    <div className="flex flex-col md:flex-row justify-between items-center w-full py-lg px-margin-mobile md:px-margin-desktop max-w-[1440px] mx-auto gap-4 md:gap-0">
-                        <div className="flex flex-col items-center md:items-start">
-                            <span className="font-headline-sm text-headline-sm font-bold text-on-tertiary-container mb-1">HealthScribe</span>
-                            <span className="font-body-sm text-body-sm text-on-surface-variant">© 2024 HealthScribe. Secure AI Prescription Digitization.</span>
-                        </div>
-                        <nav className="flex flex-wrap justify-center gap-sm md:gap-md">
-                            <a href="#" className="font-label-sm text-label-sm text-on-surface-variant hover:underline hover:text-secondary transition-all duration-300">Privacy Policy</a>
-                            <a href="#" className="font-label-sm text-label-sm text-on-surface-variant hover:underline hover:text-secondary transition-all duration-300">Terms of Service</a>
-                            <a href="#" className="font-label-sm text-label-sm text-on-surface-variant hover:underline hover:text-secondary transition-all duration-300">HIPAA Compliance</a>
-                            <a href="#" className="font-label-sm text-label-sm text-on-surface-variant hover:underline hover:text-secondary transition-all duration-300">Contact Support</a>
-                        </nav>
-                    </div>
-                </footer>
-            )}
 
             <UploadModal
                 isOpen={isUploadModalOpen}
