@@ -167,37 +167,42 @@ function AppContent() {
 
                             {/* Right: Structured Extraction Output */}
                             <div className="w-full md:w-1/2 p-md md:p-lg bg-white flex flex-col justify-center gap-sm">
+                                {/* Card 1: Doctor */}
+                                <div className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/50 bg-surface-bright shadow-sm hover:shadow-md transition-shadow">
+                                    <div className="w-10 h-10 rounded bg-on-tertiary-container/10 flex items-center justify-center text-on-tertiary-container flex-shrink-0">
+                                        <span className="material-symbols-outlined">medical_information</span>
+                                    </div>
+                                    <div>
+                                        <div className="font-label-md text-label-md text-on-surface">Dr. Rajesh Kumar</div>
+                                        <div className="font-body-sm text-body-sm text-on-surface-variant">Prescription · 15-03-2024</div>
+                                    </div>
+                                    <span className="material-symbols-outlined text-on-tertiary-container ml-auto" style={{fontSize: '18px'}}>check_circle</span>
+                                </div>
+                                {/* Card 2: Medicine */}
                                 <div className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/50 bg-surface-bright shadow-sm hover:shadow-md transition-shadow">
                                     <div className="w-10 h-10 rounded bg-on-tertiary-container/10 flex items-center justify-center text-on-tertiary-container flex-shrink-0">
                                         <span className="material-symbols-outlined">medication</span>
                                     </div>
                                     <div>
-                                        <div className="font-label-md text-label-md text-on-surface">Amoxicillin 500mg</div>
-                                        <div className="font-body-sm text-body-sm text-on-surface-variant">Take 1 tablet every 8 hours</div>
+                                        <div className="font-label-md text-label-md text-on-surface">Tab Metformin 500mg</div>
+                                        <div className="font-body-sm text-body-sm text-on-surface-variant">1-0-1 daily after meals</div>
                                     </div>
                                     <span className="material-symbols-outlined text-on-tertiary-container ml-auto" style={{fontSize: '18px'}}>check_circle</span>
                                 </div>
+                                {/* Card 3: Diagnosis */}
                                 <div className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/50 bg-surface-bright shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="w-10 h-10 rounded bg-secondary/10 flex items-center justify-center text-secondary flex-shrink-0">
-                                        <span className="material-symbols-outlined">vital_signs</span>
+                                    <div className="w-10 h-10 rounded bg-on-tertiary-container/10 flex items-center justify-center text-on-tertiary-container flex-shrink-0">
+                                        <span className="material-symbols-outlined">diagnosis</span>
                                     </div>
                                     <div>
-                                        <div className="font-label-md text-label-md text-on-surface">Blood Pressure</div>
-                                        <div className="font-body-sm text-body-sm text-on-surface-variant">120/80 mmHg — Normal</div>
+                                        <div className="font-label-md text-label-md text-on-surface">Type 2 Diabetes · HTN</div>
+                                        <div className="font-body-sm text-body-sm text-on-surface-variant">Diagnosis extracted from prescription</div>
                                     </div>
-                                    <span className="material-symbols-outlined text-secondary ml-auto" style={{fontSize: '18px'}}>trending_up</span>
-                                </div>
-                                <div className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/50 bg-surface-bright shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="w-10 h-10 rounded bg-primary-container/10 flex items-center justify-center text-on-primary-container flex-shrink-0">
-                                        <span className="material-symbols-outlined">calendar_today</span>
-                                    </div>
-                                    <div>
-                                        <div className="font-label-md text-label-md text-on-surface">Follow-up Appointment</div>
-                                        <div className="font-body-sm text-body-sm text-on-surface-variant">Oct 24, 2024 with Dr. Smith</div>
-                                    </div>
+                                    <span className="material-symbols-outlined text-on-tertiary-container ml-auto" style={{fontSize: '18px'}}>check_circle</span>
                                 </div>
                             </div>
                         </section>
+
 
                         {/* ── How It Works ── */}
                         <section className="w-full max-w-6xl mx-auto flex flex-col items-center">
