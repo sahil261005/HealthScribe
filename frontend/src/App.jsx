@@ -39,7 +39,7 @@ function AppContent() {
         <div className="min-h-screen flex flex-col bg-background text-on-background">
             {/* ── Top Navigation Bar ── */}
             <header className="bg-surface-container-lowest border-b border-outline-variant shadow-sm sticky top-0 z-50 w-full">
-                <div className="flex justify-between items-center w-full h-16 px-margin-mobile md:px-margin-desktop max-w-[1440px] mx-auto">
+                <div className="relative flex justify-between items-center w-full h-16 px-margin-mobile md:px-margin-desktop max-w-[1440px] mx-auto">
                     {/* Brand */}
                     <button
                         onClick={() => setCurrentView('home')}
@@ -48,8 +48,8 @@ function AppContent() {
                         HealthScribe
                     </button>
 
-                    {/* Desktop Nav Tabs */}
-                    <nav className="hidden md:flex items-center bg-surface-container rounded-lg p-1 gap-1 border border-outline-variant/30">
+                    {/* Desktop Nav Tabs — absolutely centered so they stay in the middle regardless of side widths */}
+                    <nav className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-surface-container rounded-lg p-1 gap-1 border border-outline-variant/30">
                         <button
                             onClick={() => setCurrentView('home')}
                             className={`font-label-md text-label-md px-4 py-1.5 rounded-md transition-all duration-200 ${
