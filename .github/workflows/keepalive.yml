@@ -1,0 +1,59 @@
+name: Render 24/7 Keep-Alive
+
+on:
+  schedule:
+    # Run every 5 minutes to prevent Render free-tier instances from idling to sleep
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    # Allows manual trigger anytime from GitHub Actions tab
+
+jobs:
+  keepalive:
+    name: Ping Health Endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Ping Django Backend
+        run: |
+          BACKEND_URL="${{ secrets.BACKEND_URL || 'https://healthscribe-backend.onrender.com' }}"
+          TARGET_URL="${BACKEND_URL%/}/health"
+          echo "Pinging Django Backend: $TARGET_URL at $(date -u)"
+          
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -H "Accept: application/json" \
+            --max-time 120 \
+            --retry 3 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "$TARGET_URL" || echo "FAILED")
+            
+          echo "Django Backend response code: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "301" ] || [ "$HTTP_STATUS" = "302" ]; then
+            echo "Django Backend is alive and healthy!"
+          else
+            echo "Warning: Received HTTP $HTTP_STATUS from Django Backend"
+          fi
+
+      - name: Ping FastAPI AI Service
+        run: |
+          AI_URL="${{ secrets.AI_SERVICE_URL || 'https://healthscribe-ai.onrender.com' }}"
+          TARGET_URL="${AI_URL%/}/health"
+          echo "Pinging FastAPI AI Service: $TARGET_URL at $(date -u)"
+          
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -H "Accept: application/json" \
+            --max-time 120 \
+            --retry 3 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "$TARGET_URL" || echo "FAILED")
+            
+          echo "FastAPI AI Service response code: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "301" ] || [ "$HTTP_STATUS" = "302" ]; then
+            echo "FastAPI AI Service is alive and healthy!"
+          else
+            echo "Warning: Received HTTP $HTTP_STATUS from FastAPI AI Service"
+          fi

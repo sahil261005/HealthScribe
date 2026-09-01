@@ -108,8 +108,10 @@ class ChatRequest(BaseModel):
 
 
 @app.get("/")
+@app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "ai_service"}
+
 
 
 @app.get("/stats")
