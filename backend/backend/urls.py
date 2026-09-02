@@ -3,7 +3,7 @@ from django.urls import path, include
 from django.http import JsonResponse
 
 def health_check(request):
-    return JsonResponse({"status": "healthy", "service": "django_backend"})
+    return JsonResponse({"status": "ok", "service": "django_backend"})
 
 urlpatterns = [
     path('', health_check, name='root_health'),

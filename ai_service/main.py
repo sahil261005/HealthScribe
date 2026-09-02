@@ -109,8 +109,9 @@ class ChatRequest(BaseModel):
 
 @app.get("/")
 @app.get("/health")
+@limiter.exempt
 def health_check():
-    return {"status": "healthy", "service": "ai_service"}
+    return {"status": "ok", "service": "ai_service"}
 
 
 

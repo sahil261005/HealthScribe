@@ -4,7 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import SaveRecordView, RegisterView, ProfileView, GenerateShareLinkView, SharedReportView, CustomTokenObtainPairView
 
 def api_health(request):
-    return JsonResponse({"status": "healthy", "service": "django_api"})
+    return JsonResponse({"status": "ok", "service": "django_api"})
 
 urlpatterns = [
     path('health/', api_health, name='api_health_slash'),
