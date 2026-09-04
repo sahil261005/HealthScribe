@@ -4,16 +4,8 @@ import axios from 'axios';
 // - Django on port 8000 for auth, records, etc.
 // - FastAPI on port 8001 for AI stuff (extraction, chat, embeddings)
 
-const defaultDjangoUrl = import.meta.env.DEV
-    ? 'http://localhost:8000/api/'
-    : 'https://healthscribe-django.onrender.com/api/';
-
-const defaultAiUrl = import.meta.env.DEV
-    ? 'http://localhost:8001/'
-    : 'https://healthscribe-ai.onrender.com/';
-
 const djangoBackendApi = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || defaultDjangoUrl,
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/',
 });
 
 // attach the JWT token to every request if we have one
@@ -48,7 +40,7 @@ djangoBackendApi.interceptors.response.use(
 
 // AI service doesn't need auth headers for now (it's internal)
 export const aiService = axios.create({
-    baseURL: import.meta.env.VITE_AI_SERVICE_URL || defaultAiUrl,
+    baseURL: import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8001/',
 });
 
 export default djangoBackendApi;

@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Run 5h 45m Keep-Alive Loop
         run: |
-          BACKEND_URL="${{ secrets.BACKEND_URL || 'https://healthscribe-backend.onrender.com' }}"
+          BACKEND_URL="${{ secrets.BACKEND_URL || 'https://healthscribe-django.onrender.com' }}"
           AI_URL="${{ secrets.AI_SERVICE_URL || 'https://healthscribe-ai.onrender.com' }}"
           
           BACKEND_HEALTH="${BACKEND_URL%/}/health"
