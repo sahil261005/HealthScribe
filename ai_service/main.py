@@ -29,11 +29,10 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS origins
-frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
+# Configure CORS origins - allow all origins for modern decoupled frontends
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[url.strip() for url in frontend_urls],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
