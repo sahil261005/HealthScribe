@@ -117,8 +117,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 return;
             }
             setExtractedData(response.data);
-        } catch {
-            setErrorMessage('Failed to extract data. Is the AI service running?');
+        } catch (error) {
+            setErrorMessage(error.friendlyMessage || 'Failed to extract data. Is the AI service running?');
         } finally {
             setIsLoading(false);
         }

@@ -32,8 +32,8 @@ const ChatInterface = () => {
             });
             const answer = res.data.answer || 'No response from the assistant.';
             setChatMessages(prev => [...prev, { sender: 'bot', text: answer }]);
-        } catch {
-            setChatMessages(prev => [...prev, { sender: 'bot', text: 'Connection error. Is the AI service running?' }]);
+        } catch (error) {
+            setChatMessages(prev => [...prev, { sender: 'bot', text: error.friendlyMessage || 'Connection error. Is the AI service running?' }]);
         } finally {
             setIsWaiting(false);
         }
