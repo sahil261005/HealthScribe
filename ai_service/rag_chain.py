@@ -352,7 +352,7 @@ def format_docs(docs):
     return "\n\n---\n\n".join(pieces)
 
 
-def chat_with_rag(user_id, question, clear_history=False, search_type="similarity", k=3, lambda_mult=0.5):
+def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
     # Main search and answer logic using LangChain and RAG
     emb = get_embeddings_model()
     if not GEMINI_API_KEY or emb is None:

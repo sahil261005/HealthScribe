@@ -129,8 +129,8 @@ class ChatRequest(BaseModel):
     query: str
     user_id: int = 1
     clear_history: bool = False
-    search_type: str = "similarity"
-    k: int = 3
+    search_type: str = "mmr"
+    k: int = 5
     lambda_mult: float = 0.5
 
 
