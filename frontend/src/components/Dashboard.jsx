@@ -53,7 +53,7 @@ const VitalsTooltip = ({ active, payload, label }) => {
     return null;
 };
 
-const Dashboard = ({ onUploadClick }) => {
+const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings }) => {
     const [allRecords, setAllRecords] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isExporting, setIsExporting] = useState(false);
@@ -264,6 +264,42 @@ const Dashboard = ({ onUploadClick }) => {
                     </button>
                 </div>
             </div>
+
+            {interactionWarnings && interactionWarnings.length > 0 && (
+                <div className="medication-warning-banner">
+                    <div className="warning-banner-header">
+                        <div className="warning-banner-left">
+                            <span className="material-symbols-outlined warning-icon">warning</span>
+                            <div>
+                                <h3 className="warning-title">
+                                    Medication Interaction Safety Alert
+                                </h3>
+                                <p className="warning-subtitle">
+                                    Potential clinical interactions were identified between your newly saved prescription and existing medications in your profile:
+                                </p>
+                                <ul className="warning-list">
+                                    {interactionWarnings.map((warning, idx) => (
+                                        <li key={idx} className="warning-list-item">
+                                            <span className="warning-bullet">•</span>
+                                            <span>{warning}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                        {onDismissWarnings && (
+                            <button
+                                onClick={onDismissWarnings}
+                                className="warning-close-btn"
+                                title="Dismiss alert"
+                                aria-label="Dismiss alert"
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <div ref={dashboardRef}>
                 {/* summary row */}

@@ -38,11 +38,9 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         setIsLoading(true);
         try {
             const response = await api.post('save_record/', { verified_data: extractedData });
-            if (response.data.warnings && response.data.warnings.length > 0) {
-                alert('Record saved with warnings:\n' + response.data.warnings.join('\n'));
-            }
+            const warnings = response.data.warnings || [];
             resetModalState();
-            onUploadSuccess();
+            onUploadSuccess(warnings);
             onClose();
         } catch {
             setErrorMessage('Failed to save record.');

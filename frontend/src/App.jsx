@@ -13,9 +13,14 @@ function AppContent() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
     const [currentView, setCurrentView] = useState('home');
+    const [interactionWarnings, setInteractionWarnings] = useState([]);
 
-    const handleUploadSuccess = () => {
+    const handleUploadSuccess = (warnings = []) => {
         setDashboardRefreshKey(previousKey => previousKey + 1);
+        setCurrentView('dashboard');
+        if (warnings && warnings.length > 0) {
+            setInteractionWarnings(warnings);
+        }
     };
 
     const openUploadModal = () => setIsUploadModalOpen(true);
@@ -260,7 +265,12 @@ function AppContent() {
                     </>
                 ) : (
                     <div className="w-full">
-                        <Dashboard key={dashboardRefreshKey} onUploadClick={openUploadModal} />
+                        <Dashboard
+                            key={dashboardRefreshKey}
+                            onUploadClick={openUploadModal}
+                            interactionWarnings={interactionWarnings}
+                            onDismissWarnings={() => setInteractionWarnings([])}
+                        />
                     </div>
                 )}
             </main>

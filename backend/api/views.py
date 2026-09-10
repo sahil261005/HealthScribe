@@ -9,6 +9,7 @@ from .models import MedicalRecord, HealthEntity, UserProfile, ShareableLink
 from .serializers import UserRegistrationSerializer, UserProfileSerializer, EmailOrUsernameTokenObtainPairSerializer
 import requests
 import os
+import threading
 
 logger = logging.getLogger("api")
 
@@ -245,44 +246,45 @@ class SaveRecordView(APIView):
                 profile.save()
                 logger.info("updated allergies for %s: %s", user.username, profile.known_allergies)
 
-            # send to AI service for vector embedding
-            try:
-                ai_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+            # prepare payload for AI vector embedding
+            meds_payload = []
+            for med in medicines:
+                meds_payload.append({
+                    "name": med.get("name", ""),
+                    "dosage": med.get("dosage", ""),
+                    "reason": med.get("reason", "")
+                })
 
-                meds_payload = []
-                for med in medicines:
-                    meds_payload.append({
-                        "name": med.get("name", ""),
-                        "dosage": med.get("dosage", ""),
-                        "reason": med.get("reason", "")
-                    })
+            date_str = record.upload_date.strftime("%B %d, %Y") if hasattr(record.upload_date, 'strftime') else str(record.upload_date)
+            embed_payload = {
+                "record_id": record.id,
+                "user_id": user.id,
+                "category": record.category,
+                "doctor_name": record.doctor_name,
+                "upload_date": date_str,
+                "symptoms": symptoms,
+                "medicines": meds_payload,
+                "vitals": vitals,
+                "allergies": allergies
+            }
+            def _async_embed(payload):
+                try:
+                    ai_url = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+                    resp = requests.post(
+                        f"{ai_url}/embed_record",
+                        json=payload,
+                        timeout=20
+                    )
+                    if resp.status_code == 200:
+                        logger.info("embedded record %d", payload.get("record_id"))
+                    else:
+                        logger.warning("embed failed for record %d: %d", payload.get("record_id"), resp.status_code)
+                except requests.exceptions.RequestException as e:
+                    logger.warning("could not reach AI service for embedding: %s", e)
+                except Exception as e:
+                    logger.warning("error in background embedding: %s", e)
 
-                date_str = record.upload_date.strftime("%B %d, %Y") if hasattr(record.upload_date, 'strftime') else str(record.upload_date)
-                embed_payload = {
-                    "record_id": record.id,
-                    "user_id": user.id,
-                    "category": record.category,
-                    "doctor_name": record.doctor_name,
-                    "upload_date": date_str,
-                    "symptoms": symptoms,
-                    "medicines": meds_payload,
-                    "vitals": vitals,
-                    "allergies": allergies
-                }
-
-                resp = requests.post(
-                    f"{ai_url}/embed_record",
-                    json=embed_payload,
-                    timeout=10
-                )
-
-                if resp.status_code == 200:
-                    logger.info("embedded record %d", record.id)
-                else:
-                    logger.warning("embed failed for record %d: %d", record.id, resp.status_code)
-
-            except requests.exceptions.RequestException as e:
-                logger.warning("could not reach AI service: %s", e)
+            threading.Thread(target=_async_embed, args=(embed_payload,), daemon=True).start()
 
             # check drug interactions with past medicines
             try:
