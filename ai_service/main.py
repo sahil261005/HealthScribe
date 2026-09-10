@@ -47,9 +47,12 @@ else:
     logger.warning("GENAI_API_KEY not found - AI features will not work.")
 
 FALLBACK_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
     "gemini-3.5-flash",
     "gemini-3.8-flash",
-    "gemini-3.1-flash-lite",
     "gemini-3.6-flash",
 ]
 
@@ -69,8 +72,6 @@ def generate_content_with_fallback(contents, generation_config=None):
             last_err = e
             err_str = str(e)
             logger.warning("Gemini model %s failed: %s. Trying next fallback...", model_name, err_str)
-            if any(k in err_str for k in ["429", "RESOURCE_EXHAUSTED", "503", "NOT_FOUND", "Quota", "quota"]):
-                continue
             continue
     raise last_err or Exception("All Gemini fallback models exhausted.")
 

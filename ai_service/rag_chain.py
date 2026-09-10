@@ -48,9 +48,12 @@ def init_chat_table():
 embeddings_model = None
 
 FALLBACK_CHAT_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
     "gemini-3.5-flash",
     "gemini-3.8-flash",
-    "gemini-3.1-flash-lite",
     "gemini-3.6-flash",
 ]
 
@@ -63,14 +66,14 @@ def get_embeddings_model():
         )
     return embeddings_model
 
-def get_chat_model(model_name="gemini-3.5-flash"):
+def get_chat_model(model_name="gemini-3.5-flash-lite"):
     if GEMINI_API_KEY:
         return ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
             max_retries=1,
-            timeout=12,
+            timeout=30,
         )
     return None
 
@@ -401,15 +404,14 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
                 last_err = e
                 err_str = str(e)
                 print(f"Chat model {model_name} failed: {err_str}. Trying next fallback...")
-                if any(k in err_str for k in ["429", "RESOURCE_EXHAUSTED", "503", "NOT_FOUND", "Quota", "quota"]):
-                    continue
                 continue
 
         if answer is None:
             return {"error": f"All chat models unavailable. Last error: {last_err}"}
 
-        add_message(user_id, question, answer)
-        return {"answer": answer, "model_used": used_model}
+        ans_text = str(answer)
+        add_message(user_id, question, ans_text)
+        return {"answer": ans_text, "model_used": used_model}
 
     except Exception as e:
         return {"error": str(e)}
