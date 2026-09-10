@@ -9,7 +9,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [errorMessage, setErrorMessage] = useState('');
     const [fileInputKey, setFileInputKey] = useState(0);
 
-    const [selectedEngine, setSelectedEngine] = useState('gemini');
+    const [selectedEngine, setSelectedEngine] = useState('hybrid');
 
     const resetModalState = () => {
         setSelectedFile(null);
@@ -65,9 +65,9 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
     const handleAddMedicine = () => {
         const currentMeds = extractedData.medicines || [];
-        setExtractedData({ 
-            ...extractedData, 
-            medicines: [...currentMeds, { name: '', dosage: '', reason: '' }] 
+        setExtractedData({
+            ...extractedData,
+            medicines: [...currentMeds, { name: '', dosage: '', reason: '' }]
         });
     };
 
@@ -85,9 +85,9 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
     const handleAddAllergy = () => {
         const currentAllergies = extractedData.allergies || [];
-        setExtractedData({ 
-            ...extractedData, 
-            allergies: [...currentAllergies, ''] 
+        setExtractedData({
+            ...extractedData,
+            allergies: [...currentAllergies, '']
         });
     };
 
@@ -117,8 +117,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 return;
             }
             setExtractedData(response.data);
-        } catch (error) {
-            setErrorMessage(error.friendlyMessage || 'Failed to extract data. Is the AI service running?');
+        } catch {
+            setErrorMessage('Failed to extract data. Is the AI service running?');
         } finally {
             setIsLoading(false);
         }
@@ -134,7 +134,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                     </div>
                     <button onClick={handleClose} className="btn-close">✕</button>
                 </div>
-                
+
                 <div className="modal-body">
                     {/* left side - file upload */}
                     <div className="upload-column">
@@ -153,7 +153,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 </p>
                             </label>
                         </div>
-                        
+
                         {selectedFile && (
                             <div className="preview-container">
                                 {selectedFile.type === 'application/pdf' ? (
@@ -169,23 +169,23 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 )}
                             </div>
                         )}
-                        
+
                         <div className="engine-selector-group">
                             <label className="engine-label">AI OCR Engine:</label>
                             <div className="engine-toggle-row">
                                 <button
                                     type="button"
-                                    className={`btn-engine-tab ${selectedEngine === 'gemini' ? 'active-engine' : ''}`}
-                                    onClick={() => setSelectedEngine('gemini')}
-                                >
-                                    Fast Vision (Gemini)
-                                </button>
-                                <button
-                                    type="button"
                                     className={`btn-engine-tab ${selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
                                     onClick={() => setSelectedEngine('hybrid')}
                                 >
-                                    Multilingual Indic OCR (Hybrid)
+                                    Fast Vision (Sarvam)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn-engine-tab ${selectedEngine === 'gemini' ? 'active-engine' : ''}`}
+                                    onClick={() => setSelectedEngine('gemini')}
+                                >
+                                    Deep Analysis (Gemini)
                                 </button>
                             </div>
                         </div>
@@ -210,19 +210,19 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                         <h3 className="section-title verify-section-title">
                             Verify Extracted Data
                         </h3>
-                        
+
                         {extractedData ? (
                             <div>
                                 {/* doctor name */}
                                 <div className="input-row doctor-name-row">
                                     <span className="text-sm doctor-name-label">Doctor Name:</span>
-                                    <input 
-                                        className="mini-input doctor-name-input" 
-                                        value={extractedData.doctor_name || ''} 
-                                        onChange={(e) => setExtractedData({ 
-                                            ...extractedData, 
-                                            doctor_name: e.target.value 
-                                        })} 
+                                    <input
+                                        className="mini-input doctor-name-input"
+                                        value={extractedData.doctor_name || ''}
+                                        onChange={(e) => setExtractedData({
+                                            ...extractedData,
+                                            doctor_name: e.target.value
+                                        })}
                                         placeholder="e.g. Dr. Smith (Optional)"
                                     />
                                 </div>
@@ -263,13 +263,13 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                                 <span className="text-sm vital-edit-label">
                                                     {key}:
                                                 </span>
-                                                <input 
-                                                    className="mini-input" 
-                                                    value={val || ''} 
-                                                    onChange={(e) => setExtractedData({ 
-                                                        ...extractedData, 
-                                                        vitals: { ...extractedData.vitals, [key]: e.target.value } 
-                                                    })} 
+                                                <input
+                                                    className="mini-input"
+                                                    value={val || ''}
+                                                    onChange={(e) => setExtractedData({
+                                                        ...extractedData,
+                                                        vitals: { ...extractedData.vitals, [key]: e.target.value }
+                                                    })}
                                                 />
                                             </div>
                                         ))}
