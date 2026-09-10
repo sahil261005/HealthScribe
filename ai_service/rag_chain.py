@@ -69,6 +69,8 @@ def get_chat_model(model_name="gemini-3.5-flash"):
             model=model_name,
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
+            max_retries=1,
+            timeout=12,
         )
     return None
 
