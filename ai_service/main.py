@@ -322,7 +322,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
     # --- GEMINI ENGINE (Fast Vision or Sarvam fallback) ---
     try:
         logger.info("ENGINE: GEMINI — Running Direct Vision extraction...")
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         json_schema = {
             "type": "object",
