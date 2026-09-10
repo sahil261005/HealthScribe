@@ -134,8 +134,8 @@ class ChatRequest(BaseModel):
     lambda_mult: float = 0.5
 
 
-@app.get("/")
-@app.get("/health")
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD"])
 @limiter.exempt
 def health_check():
     return {
