@@ -12,7 +12,7 @@ from langchain_community.vectorstores import PGVector
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GENAI_API_KEY")
+GEMINI_API_KEY = (os.getenv("GENAI_API_KEY") or "").strip() or None
 CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
 CONNECTION_STRING = os.getenv("DATABASE_URL")
 
@@ -46,7 +46,13 @@ def init_chat_table():
 
 # Embeddings and LLM lazy configuration
 embeddings_model = None
-chat_model = None
+
+FALLBACK_CHAT_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
+]
 
 def get_embeddings_model():
     global embeddings_model
@@ -57,15 +63,14 @@ def get_embeddings_model():
         )
     return embeddings_model
 
-def get_chat_model():
-    global chat_model
-    if chat_model is None and GEMINI_API_KEY:
-        chat_model = ChatGoogleGenerativeAI(
-            model="gemini-3.6-flash",
+def get_chat_model(model_name="gemini-3.5-flash"):
+    if GEMINI_API_KEY:
+        return ChatGoogleGenerativeAI(
+            model=model_name,
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
         )
-    return chat_model
+    return None
 
 PROMPT_TEMPLATE = """You are a helpful medical assistant for the HealthScribe app.
 
@@ -347,9 +352,8 @@ def format_docs(docs):
 
 def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
     # Main search and answer logic using LangChain and RAG
-    model = get_chat_model()
     emb = get_embeddings_model()
-    if model is None or emb is None:
+    if not GEMINI_API_KEY or emb is None:
         return {"error": "AI models not configured"}
 
     try:
@@ -375,16 +379,35 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
         context = format_docs(docs)
         history = format_history(user_id)
 
-        # Ask the model
-        chain = MEDICAL_PROMPT | model | StrOutputParser()
-        answer = chain.invoke({
-            "context": context,
-            "chat_history": history,
-            "question": question
-        })
+        # Multi-model fallback cascade
+        last_err = None
+        answer = None
+        used_model = None
+
+        for model_name in FALLBACK_CHAT_MODELS:
+            try:
+                candidate_model = get_chat_model(model_name)
+                chain = MEDICAL_PROMPT | candidate_model | StrOutputParser()
+                answer = chain.invoke({
+                    "context": context,
+                    "chat_history": history,
+                    "question": question
+                })
+                used_model = model_name
+                break
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                print(f"Chat model {model_name} failed: {err_str}. Trying next fallback...")
+                if any(k in err_str for k in ["429", "RESOURCE_EXHAUSTED", "503", "NOT_FOUND", "Quota", "quota"]):
+                    continue
+                continue
+
+        if answer is None:
+            return {"error": f"All chat models unavailable. Last error: {last_err}"}
 
         add_message(user_id, question, answer)
-        return {"answer": answer}
+        return {"answer": answer, "model_used": used_model}
 
     except Exception as e:
         return {"error": str(e)}

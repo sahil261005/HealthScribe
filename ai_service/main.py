@@ -38,13 +38,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GENAI_API_KEY")
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
+GEMINI_API_KEY = (os.getenv("GENAI_API_KEY") or "").strip() or None
+SARVAM_API_KEY = (os.getenv("SARVAM_API_KEY") or "").strip() or None
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     logger.warning("GENAI_API_KEY not found - AI features will not work.")
+
+FALLBACK_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
+]
+
+def generate_content_with_fallback(contents, generation_config=None):
+    """Executes Gemini generation with automatic multi-model fallback if quota/capacity is exceeded."""
+    last_err = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            logger.info("Attempting Gemini generation with model: %s", model_name)
+            model = genai.GenerativeModel(model_name)
+            if generation_config:
+                response = model.generate_content(contents, generation_config=generation_config)
+            else:
+                response = model.generate_content(contents)
+            return response, model_name
+        except Exception as e:
+            last_err = e
+            err_str = str(e)
+            logger.warning("Gemini model %s failed: %s. Trying next fallback...", model_name, err_str)
+            if any(k in err_str for k in ["429", "RESOURCE_EXHAUSTED", "503", "NOT_FOUND", "Quota", "quota"]):
+                continue
+            continue
+    raise last_err or Exception("All Gemini fallback models exhausted.")
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
 ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"]
@@ -110,7 +138,13 @@ class ChatRequest(BaseModel):
 @app.get("/health")
 @limiter.exempt
 def health_check():
-    return {"status": "ok", "service": "ai_service"}
+    return {
+        "status": "ok",
+        "service": "ai_service",
+        "sarvam_configured": bool(SARVAM_API_KEY),
+        "gemini_configured": bool(GEMINI_API_KEY),
+        "fallback_models": FALLBACK_MODELS,
+    }
 
 
 
@@ -223,7 +257,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
 
             logger.info("ENGINE: HYBRID — Submitting to Sarvam Extract API (doc-ai/v1/job/extract)...")
 
-            headers = {"api-subscription-key": SARVAM_API_KEY}
+            headers = {"api-subscription-key": SARVAM_API_KEY.strip()}
 
             # Step 1: Submit the extraction job with file + schema in one multipart POST
             submit_resp = requests.post(
@@ -321,8 +355,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
 
     # --- GEMINI ENGINE (Fast Vision or Sarvam fallback) ---
     try:
-        logger.info("ENGINE: GEMINI — Running Direct Vision extraction...")
-        model = genai.GenerativeModel("gemini-3.6-flash")
+        logger.info("ENGINE: GEMINI — Running Direct Vision extraction with fallback models...")
 
         json_schema = {
             "type": "object",
@@ -360,17 +393,17 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
             "response_schema": json_schema
         }
 
-        ai_response = model.generate_content([
+        ai_response, used_model = generate_content_with_fallback([
             {"mime_type": file_type, "data": file_content},
             extraction_prompt,
         ], generation_config=config)
 
         result = json.loads(ai_response.text)
-        result["ocr_engine"] = "Gemini"
+        result["ocr_engine"] = f"Gemini ({used_model})"
         return result
 
     except json.JSONDecodeError:
-        raw = ai_response.text if ai_response else "no response"
+        raw = ai_response.text if 'ai_response' in locals() and ai_response else "no response"
         logger.error("Gemini returned invalid JSON: %s", raw)
         raise HTTPException(status_code=422, detail="Failed to parse structured JSON from model.")
     except Exception as e:
@@ -397,16 +430,12 @@ async def embed_record(request: Request, body: EmbedRecordRequest):
             allergies=body.allergies,
         )
 
-        if ok:
-            logger.info("Embedded record %d for user %d", body.record_id, body.user_id)
-            return {"message": "ok", "record_id": body.record_id}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to embed record.")
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save into vector database.")
 
-    except HTTPException:
-        raise
+        return {"message": "ok"}
     except Exception as e:
-        logger.exception("embed_record failed: %s", e)
+        logger.error(f"Error embedding record: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -452,8 +481,6 @@ async def check_interactions(request: Request, body: InteractionRequest):
         return {"warnings": []}
 
     try:
-        model = genai.GenerativeModel("gemini-3.6-flash")
-
         current = ", ".join(body.current_medicines) if body.current_medicines else "None"
         new = ", ".join(body.new_medicines)
 
@@ -466,7 +493,7 @@ If no interactions, return an empty JSON array: []
 
 Return ONLY a JSON array of strings, nothing else."""
 
-        response = model.generate_content(prompt)
+        response, _ = generate_content_with_fallback(prompt)
         text = response.text.replace("```json", "").replace("```", "").strip()
         warnings = json.loads(text)
         return {"warnings": warnings}
@@ -482,8 +509,6 @@ async def compare_doctors(request: Request, body: CompareDoctorsRequest):
         raise HTTPException(status_code=503, detail="AI not configured")
 
     try:
-        model = genai.GenerativeModel("gemini-3.6-flash")
-
         doc1 = body.record1.get("doctor_name", "Doctor A")
         doc2 = body.record2.get("doctor_name", "Doctor B")
 
@@ -495,7 +520,7 @@ Doctor {doc2}: symptoms={body.record2.get('symptoms')}, medicines={body.record2.
 What are the differences in treatment? Explain in simple terms why they might differ.
 Keep it short and remind the patient to consult a specialist if unsure."""
 
-        response = model.generate_content(prompt)
+        response, _ = generate_content_with_fallback(prompt)
         return {"summary": response.text}
     except Exception as e:
         logger.error("Compare failed: %s", e)

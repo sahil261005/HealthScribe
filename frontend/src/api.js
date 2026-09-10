@@ -56,8 +56,16 @@ aiService.interceptors.response.use(
         } else if (!error.response) {
             // network error — service is completely unreachable
             error.friendlyMessage = 'Cannot reach the AI service. It may be starting up (free tier). Please wait ~60 seconds and try again.';
-        } else if (error.response.status === 503) {
-            error.friendlyMessage = error.response.data?.detail || 'AI service is temporarily unavailable. Please try again shortly.';
+        } else if (error.response?.data?.detail) {
+            const detail = error.response.data.detail;
+            const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
+            if (detailStr.includes('429') || detailStr.includes('RESOURCE_EXHAUSTED') || detailStr.includes('Quota exceeded') || detailStr.includes('quota')) {
+                error.friendlyMessage = 'Daily AI quota exceeded for Gemini free tier. Please switch to Fast Vision (Sarvam) or wait for quota reset.';
+            } else if (error.response.status === 503) {
+                error.friendlyMessage = detailStr || 'AI service is temporarily unavailable. Please try again shortly.';
+            } else {
+                error.friendlyMessage = detailStr;
+            }
         }
         return Promise.reject(error);
     }
