@@ -1,101 +1,95 @@
-name: Render 24/7 Keep-Alive
+name: 24/7 HealthScribe Keep-Alive Ping
 
 on:
   schedule:
-    # Trigger every 5 hours (continuous loop inside will run for 5h 45m, creating a 45m fail-safe overlap)
+    # fires every 5 hours as a safety net to restart the loop.
+    # GitHub cron is unreliable (can delay 2-4 hrs), but that's fine
+    # because the RUNNING job already pings every 10 min continuously.
     - cron: '0 */5 * * *'
   workflow_dispatch:
-    # Allows manual trigger at any time
 
+# only allow one instance at a time so we don't stack runners
 concurrency:
   group: keepalive
   cancel-in-progress: false
 
 jobs:
-  keepalive-loop:
-    name: Continuous Keep-Alive Loop
+  keep-alive-loop:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-
     steps:
-      - name: Run 5h 45m Keep-Alive Loop
+      - name: Continuous keep-alive ping (loops for ~5 h 45 min)
         run: |
-          BACKEND_URL="${{ secrets.BACKEND_URL || 'https://healthscribe-django.onrender.com' }}"
-          AI_URL="${{ secrets.AI_SERVICE_URL || 'https://healthscribe-ai-xexh.onrender.com' }}"
+          # --------------------------------------------------------
+          # This job pings both Render health endpoints every 10 minutes
+          # in a loop for ~5 hours 45 minutes. The cron restarts
+          # the job every 5 hours, so there is always overlap and
+          # neither server ever hits Render's 15-minute idle timeout.
+          # --------------------------------------------------------
+
+          DURATION=20700          # 5 hours 45 minutes in seconds
+          INTERVAL=600            # 10 minutes in seconds (well under Render's 15-min idle limit)
           
-          BACKEND_HEALTH="${BACKEND_URL%/}/health"
-          AI_HEALTH="${AI_URL%/}/health"
-          
-          USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          
-          DURATION=20700  # 5 hours 45 minutes in seconds
-          INTERVAL=600   # 10 minutes in seconds
-          
-          START_TIME=$(date +%s)
-          END_TIME=$((START_TIME + DURATION))
-          
-          echo "========================================================="
-          echo "Starting 24/7 Keep-Alive Loop at $(date -u)"
-          echo "Target Backend: $BACKEND_HEALTH"
-          echo "Target AI Service: $AI_HEALTH"
-          echo "Loop Duration: $DURATION seconds (5h 45m)"
-          echo "Ping Interval: $INTERVAL seconds (10m)"
-          echo "========================================================="
-          
-          ping_endpoint() {
-            local service_name="$1"
-            local target_url="$2"
-            
-            echo "[$service_name] Pinging $target_url at $(date -u)"
-            
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -A "$USER_AGENT" \
-              -H "Accept: application/json" \
+          DJANGO_URL="https://healthscribe-django.onrender.com/health"
+          AI_URL="https://healthscribe-ai-xexh.onrender.com/health"
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+          END_TIME=$((SECONDS + DURATION))
+          PING_NUM=0
+
+          echo "=== HealthScribe Keep-Alive Loop Started ==="
+          echo "Django URL: $DJANGO_URL"
+          echo "AI Service URL: $AI_URL"
+          echo "Will run for $((DURATION / 3600))h $((DURATION % 3600 / 60))m"
+          echo "Ping interval: $((INTERVAL / 60)) minutes"
+          echo ""
+
+          while [ $SECONDS -lt $END_TIME ]; do
+            PING_NUM=$((PING_NUM + 1))
+            TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+            # 1. Ping Django Backend
+            DJANGO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 120 \
-              "$target_url" || echo "ERR")
-            
-            if [ "$HTTP_CODE" != "200" ]; then
-              echo "[$service_name] Received non-200 status: $HTTP_CODE. Retrying in 10 seconds..."
-              sleep 10
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-                -A "$USER_AGENT" \
-                -H "Accept: application/json" \
+              -H "User-Agent: $UA" \
+              -H "Accept: application/json" \
+              "$DJANGO_URL" 2>/dev/null || echo "000")
+
+            # 2. Ping FastAPI AI Service
+            AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 120 \
+              -H "User-Agent: $UA" \
+              -H "Accept: application/json" \
+              "$AI_URL" 2>/dev/null || echo "000")
+
+            if [ "$DJANGO_STATUS" != "200" ]; then
+              sleep 5
+              DJANGO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                 --max-time 120 \
-                "$target_url" || echo "ERR")
+                -H "User-Agent: $UA" \
+                -H "Accept: application/json" \
+                "$DJANGO_URL" 2>/dev/null || echo "000")
             fi
-            
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "[$service_name] Status: 200 OK"
+
+            if [ "$AI_STATUS" != "200" ]; then
+              sleep 5
+              AI_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                --max-time 120 \
+                -H "User-Agent: $UA" \
+                -H "Accept: application/json" \
+                "$AI_URL" 2>/dev/null || echo "000")
+            fi
+
+            echo "[$TIMESTAMP] Ping #$PING_NUM — Django: $DJANGO_STATUS | AI: $AI_STATUS"
+
+            # sleep until next ping (unless loop time is up)
+            REMAINING=$((END_TIME - SECONDS))
+            if [ $REMAINING -gt $INTERVAL ]; then
+              sleep $INTERVAL
             else
-              echo "[$service_name] WARNING: Final response code: $HTTP_CODE"
+              sleep $REMAINING 2>/dev/null || true
             fi
-          }
-          
-          ITERATION=1
-          while true; do
-            CURRENT_TIME=$(date +%s)
-            ELAPSED=$((CURRENT_TIME - START_TIME))
-            REMAINING=$((END_TIME - CURRENT_TIME))
-            
-            if [ $REMAINING -le 0 ]; then
-              echo "Reached target loop duration of $DURATION seconds. Exiting loop cleanly."
-              break
-            fi
-            
-            echo "--- Iteration $ITERATION (Elapsed: ${ELAPSED}s / Remaining: ${REMAINING}s) ---"
-            ping_endpoint "Django Backend" "$BACKEND_HEALTH"
-            ping_endpoint "FastAPI AI" "$AI_HEALTH"
-            
-            ITERATION=$((ITERATION + 1))
-            
-            if [ $REMAINING -lt $INTERVAL ]; then
-              echo "Sleeping remaining $REMAINING seconds before loop exit..."
-              sleep $REMAINING
-              break
-            fi
-            
-            echo "Sleeping $INTERVAL seconds until next ping..."
-            sleep $INTERVAL
           done
-          
-          echo "Keep-alive session completed successfully at $(date -u)"
+
+          echo ""
+          echo "=== Loop finished after $PING_NUM pings ==="
+          echo "Cron will restart this job shortly."
