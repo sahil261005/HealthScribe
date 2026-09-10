@@ -1,6 +1,8 @@
 import os
 import json
 import psycopg2
+import threading
+import concurrent.futures
 from dotenv import load_dotenv
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -124,30 +126,42 @@ def save_histories(data):
 chat_histories = load_histories()
 
 
-def get_history(user_id):
-    # Try fetching history from Postgres
-    if CONNECTION_STRING:
-        try:
-            conn = psycopg2.connect(CONNECTION_STRING)
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT sender, message FROM (
-                    SELECT sender, message, created_at FROM chat_history
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT 20
-                ) sub ORDER BY created_at ASC
-            """, (str(user_id),))
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
+_history_conn = None
 
-            result = []
-            for sender, msg in rows:
-                result.append(f"{sender}: {msg}")
-            return result
-        except Exception as e:
-            print(f"postgres history error: {e}")
+def get_history(user_id):
+    global _history_conn
+    # Try fetching history from Postgres with connection reuse and auto-reconnect
+    if CONNECTION_STRING:
+        for attempt in range(2):
+            try:
+                if _history_conn is None or _history_conn.closed:
+                    _history_conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
+                cur = _history_conn.cursor()
+                cur.execute("""
+                    SELECT sender, message FROM (
+                        SELECT sender, message, created_at FROM chat_history
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 6
+                    ) sub ORDER BY created_at ASC
+                """, (str(user_id),))
+                rows = cur.fetchall()
+                cur.close()
+
+                result = []
+                for sender, msg in rows:
+                    result.append(f"{sender}: {msg}")
+                return result
+            except Exception as e:
+                print(f"postgres history error (attempt {attempt+1}): {e}")
+                try:
+                    if _history_conn:
+                        _history_conn.close()
+                except Exception:
+                    pass
+                _history_conn = None
+                if attempt == 1:
+                    break
 
     # Fallback to in-memory JSON file history
     key = str(user_id)
@@ -160,15 +174,11 @@ def add_message(user_id, question, answer):
     # Save to Postgres
     if CONNECTION_STRING:
         try:
-            conn = psycopg2.connect(CONNECTION_STRING)
+            conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s)",
-                (str(user_id), "Human", question)
-            )
-            cur.execute(
-                "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s)",
-                (str(user_id), "Assistant", answer)
+                "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s), (%s, %s, %s)",
+                (str(user_id), "Human", question, str(user_id), "Assistant", answer)
             )
             # Keep only the last 20 messages for this user to save space
             cur.execute("""
@@ -379,10 +389,14 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
             search_kwargs=search_kwargs
         )
 
-        # Get relevant documents and conversation context
-        docs = retriever.invoke(question)
+        # Fetch relevant documents and conversation history concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_docs = executor.submit(retriever.invoke, question)
+            future_history = executor.submit(format_history, user_id)
+            docs = future_docs.result()
+            history = future_history.result()
+
         context = format_docs(docs)
-        history = format_history(user_id)
 
         # Multi-model fallback cascade
         last_err = None
@@ -410,7 +424,7 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
             return {"error": f"All chat models unavailable. Last error: {last_err}"}
 
         ans_text = str(answer)
-        add_message(user_id, question, ans_text)
+        threading.Thread(target=add_message, args=(user_id, question, ans_text), daemon=True).start()
         return {"answer": ans_text, "model_used": used_model}
 
     except Exception as e:
