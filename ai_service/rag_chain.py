@@ -61,7 +61,7 @@ def get_chat_model():
     global chat_model
     if chat_model is None and GEMINI_API_KEY:
         chat_model = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
         )
@@ -218,7 +218,14 @@ def format_history(user_id):
 
 
 # Vector database initialization (Postgres PGVector / Local Chroma fallback)
+# Cache the store so we don't open a new DB connection on every request
+_vectorstore_cache = None
+
 def get_vectorstore():
+    global _vectorstore_cache
+    if _vectorstore_cache is not None:
+        return _vectorstore_cache
+
     emb = get_embeddings_model()
     if emb is None:
         return None
@@ -230,6 +237,7 @@ def get_vectorstore():
                 embedding_function=emb,
                 collection_name="medical_records"
             )
+            _vectorstore_cache = store
             return store
         except Exception as e:
             print(f"pgvector error: {e}")
@@ -242,6 +250,7 @@ def get_vectorstore():
             embedding_function=emb,
             collection_name="medical_records"
         )
+        _vectorstore_cache = store
         return store
     except Exception as e:
         print(f"chroma error: {e}")

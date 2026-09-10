@@ -322,7 +322,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
     # --- GEMINI ENGINE (Fast Vision or Sarvam fallback) ---
     try:
         logger.info("ENGINE: GEMINI — Running Direct Vision extraction...")
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         json_schema = {
             "type": "object",
@@ -452,7 +452,7 @@ async def check_interactions(request: Request, body: InteractionRequest):
         return {"warnings": []}
 
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         current = ", ".join(body.current_medicines) if body.current_medicines else "None"
         new = ", ".join(body.new_medicines)
@@ -482,7 +482,7 @@ async def compare_doctors(request: Request, body: CompareDoctorsRequest):
         raise HTTPException(status_code=503, detail="AI not configured")
 
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         doc1 = body.record1.get("doctor_name", "Doctor A")
         doc2 = body.record2.get("doctor_name", "Doctor B")
