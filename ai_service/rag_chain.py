@@ -61,7 +61,7 @@ def get_chat_model():
     global chat_model
     if chat_model is None and GEMINI_API_KEY:
         chat_model = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model="gemini-3.6-flash",
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
         )

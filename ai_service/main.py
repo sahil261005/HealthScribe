@@ -452,7 +452,7 @@ async def check_interactions(request: Request, body: InteractionRequest):
         return {"warnings": []}
 
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-3.6-flash")
 
         current = ", ".join(body.current_medicines) if body.current_medicines else "None"
         new = ", ".join(body.new_medicines)
@@ -482,7 +482,7 @@ async def compare_doctors(request: Request, body: CompareDoctorsRequest):
         raise HTTPException(status_code=503, detail="AI not configured")
 
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-3.6-flash")
 
         doc1 = body.record1.get("doctor_name", "Doctor A")
         doc2 = body.record2.get("doctor_name", "Doctor B")
