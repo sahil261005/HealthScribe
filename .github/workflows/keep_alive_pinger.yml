@@ -1,34 +1,28 @@
-name: 24/7 HealthScribe Keep-Alive Ping
+name: HealthScribe 24/7 Keep-Alive Pinger
 
 on:
   schedule:
-    # fires every 5 hours as a safety net to restart the loop.
-    # GitHub cron is unreliable (can delay 2-4 hrs), but that's fine
-    # because the RUNNING job already pings every 10 min continuously.
+    # Trigger every 5 hours to restart the loop with overlap
     - cron: '0 */5 * * *'
   workflow_dispatch:
+    # Allows manual trigger at any time
 
-# only allow one instance at a time so we don't stack runners
 concurrency:
-  group: keepalive
-  cancel-in-progress: false
+  group: healthscribe-pinger
+  cancel-in-progress: true
 
 jobs:
-  keep-alive-loop:
+  pinger-loop:
+    name: Keep-Alive Ping Loop (5h 45m)
     runs-on: ubuntu-latest
-    steps:
-      - name: Continuous keep-alive ping (loops for ~5 h 45 min)
-        run: |
-          # --------------------------------------------------------
-          # This job pings both Render health endpoints every 10 minutes
-          # in a loop for ~5 hours 45 minutes. The cron restarts
-          # the job every 5 hours, so there is always overlap and
-          # neither server ever hits Render's 15-minute idle timeout.
-          # --------------------------------------------------------
+    timeout-minutes: 360
 
+    steps:
+      - name: Ping Django Backend and AI Service
+        run: |
           DURATION=20700          # 5 hours 45 minutes in seconds
-          INTERVAL=600            # 10 minutes in seconds (well under Render's 15-min idle limit)
-          
+          INTERVAL=600            # 10 minutes in seconds (under Render's 15-min idle timeout)
+
           DJANGO_URL="https://healthscribe-django.onrender.com/health"
           AI_URL="https://healthscribe-ai-xexh.onrender.com/health"
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -36,11 +30,13 @@ jobs:
           END_TIME=$((SECONDS + DURATION))
           PING_NUM=0
 
-          echo "=== HealthScribe Keep-Alive Loop Started ==="
-          echo "Django URL: $DJANGO_URL"
-          echo "AI Service URL: $AI_URL"
-          echo "Will run for $((DURATION / 3600))h $((DURATION % 3600 / 60))m"
-          echo "Ping interval: $((INTERVAL / 60)) minutes"
+          echo "========================================================="
+          echo "HealthScribe Keep-Alive Pinger Started"
+          echo "Django URL:    $DJANGO_URL"
+          echo "AI URL:        $AI_URL"
+          echo "Loop Duration: $((DURATION / 3600))h $((DURATION % 3600 / 60))m"
+          echo "Interval:      $((INTERVAL / 60)) minutes"
+          echo "========================================================="
           echo ""
 
           while [ $SECONDS -lt $END_TIME ]; do
@@ -61,6 +57,7 @@ jobs:
               -H "Accept: application/json" \
               "$AI_URL" 2>/dev/null || echo "000")
 
+            # Quick 5-second retry if either service wasn't 200 (in case of brief cold-boot lag)
             if [ "$DJANGO_STATUS" != "200" ]; then
               sleep 5
               DJANGO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -79,9 +76,9 @@ jobs:
                 "$AI_URL" 2>/dev/null || echo "000")
             fi
 
-            echo "[$TIMESTAMP] Ping #$PING_NUM — Django: $DJANGO_STATUS | AI: $AI_STATUS"
+            echo "[$TIMESTAMP] Ping #$PING_NUM — Django: $DJANGO_STATUS | AI Service: $AI_STATUS"
 
-            # sleep until next ping (unless loop time is up)
+            # Sleep until next ping interval or remaining loop time
             REMAINING=$((END_TIME - SECONDS))
             if [ $REMAINING -gt $INTERVAL ]; then
               sleep $INTERVAL
@@ -91,5 +88,7 @@ jobs:
           done
 
           echo ""
-          echo "=== Loop finished after $PING_NUM pings ==="
-          echo "Cron will restart this job shortly."
+          echo "========================================================="
+          echo "Loop finished cleanly after $PING_NUM pings."
+          echo "Next scheduled cron run will take over."
+          echo "========================================================="
