@@ -1,4 +1,5 @@
 import re
+import random
 import os
 import json
 import psycopg2
@@ -150,6 +151,68 @@ USER MESSAGE: {question}
 YOUR RESPONSE:"""
 
 GREETING_PROMPT = ChatPromptTemplate.from_template(GREETING_PROMPT_TEMPLATE)
+
+# Instant canned responses for common greetings — zero API calls, zero latency
+INSTANT_RESPONSES = {
+    "greeting": [
+        "Hello! 👋 I'm your HealthScribe assistant. I can help you review your medical records, prescriptions, symptoms, doctor notes, and vitals. What would you like to know?",
+        "Hi there! Welcome to HealthScribe. I can help you look up your prescriptions, symptoms, vitals, and doctor notes from your uploaded records. How can I help?",
+        "Hey! I'm HealthScribe Assistant — here to help you navigate your medical records. Ask me about your medicines, symptoms, vitals, or doctor visits!",
+    ],
+    "identity": [
+        "I'm HealthScribe Assistant! I help you understand your uploaded medical records — prescriptions, symptoms, vitals, doctor notes, and more. I'm not a doctor, but I can help you find info in your records. 😊",
+        "I'm your HealthScribe AI companion! I can search through your medical records, look up prescribed medicines and dosages, review symptoms, and check your vitals. What would you like to explore?",
+    ],
+    "capability": [
+        "I can help you with:\n• 📋 Review your medical records\n• 💊 Look up prescribed medicines & dosages\n• 🩺 Check your symptoms history\n• ❤️ View your vitals (BP, pulse, temperature)\n• 👨‍⚕️ See doctor notes\n\nJust ask me anything about your health records!",
+        "Here's what I can do for you:\n• Search your uploaded prescriptions and medicines\n• Review symptoms from past visits\n• Check your vitals history\n• Look up doctor notes and diagnoses\n\nWhat would you like to know?",
+    ],
+    "thanks": [
+        "You're welcome! 😊 Let me know if you need anything else about your records.",
+        "Happy to help! Feel free to ask me anything about your medical records anytime.",
+    ],
+    "goodbye": [
+        "Goodbye! Take care of yourself. I'll be here whenever you need to check your records! 👋",
+        "See you! Remember, I'm always here to help with your health records. Stay healthy! 😊",
+    ],
+}
+
+def get_instant_response(question: str):
+    """Returns an instant canned response for common greetings, or None if LLM should handle it."""
+    q = question.strip().lower()
+    cleaned = re.sub(r"[^\w\s]", "", q).strip()
+
+    # Capability questions
+    if re.search(r"\bwhat\s+(can|do)\s+(you|u)\s+do\b", q) or re.search(r"\bwhat\s+(can|do)\s+(you|u)\s+do\b", cleaned):
+        return random.choice(INSTANT_RESPONSES["capability"])
+    if cleaned == "help":
+        return random.choice(INSTANT_RESPONSES["capability"])
+
+    # Identity questions
+    if re.search(r"\b(who|what)\s+(are|r)\s+(you|u)\b", q) or re.search(r"\b(who|what)\s+(are|r)\s+(you|u)\b", cleaned):
+        return random.choice(INSTANT_RESPONSES["identity"])
+    if re.search(r"\bwhat\s+is\s+healthscribe\b", q):
+        return random.choice(INSTANT_RESPONSES["identity"])
+
+    # Thanks
+    if re.search(r"\b(thank\s+(you|u)|thanks|thnx|ty|thx)\b", q):
+        return random.choice(INSTANT_RESPONSES["thanks"])
+
+    # Goodbye
+    if re.search(r"\b(bye|goodbye|see\s+(you|u))\b", q):
+        return random.choice(INSTANT_RESPONSES["goodbye"])
+
+    # Simple greetings
+    if re.search(r"\b(hi|hello|hey|hola|namaste|greetings|yo|sup|hii|hiii|heya|howdy)\b", q):
+        return random.choice(INSTANT_RESPONSES["greeting"])
+    if re.search(r"\bgood\s+(morning|afternoon|evening|day|night)\b", q):
+        return random.choice(INSTANT_RESPONSES["greeting"])
+    if re.search(r"\b(wassup|wazzup|whats\s+up|what\'?s\s+up)\b", q):
+        return random.choice(INSTANT_RESPONSES["greeting"])
+    if re.search(r"\bhow\s+(are\s+(you|u)|r\s+u|is\s+it\s+going)\b", q):
+        return random.choice(INSTANT_RESPONSES["greeting"])
+
+    return None
 
 
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
@@ -426,6 +489,11 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
 
         # ⚡ Conversational Shortcut: Skip vector database search for simple greetings!
         if is_conversational_query(question):
+            instant = get_instant_response(question)
+            if instant:
+                threading.Thread(target=add_message, args=(user_id, question, instant), daemon=True).start()
+                return {"answer": instant, "model_used": "instant", "fast_path": True}
+            # Fallback to LLM for edge-case conversational queries
             last_err = None
             for model_name in FALLBACK_CHAT_MODELS:
                 try:
@@ -521,6 +589,12 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
 
         # ⚡ Conversational Shortcut: Greetings bypass vector search completely for instant streaming
         if is_conversational_query(question):
+            instant = get_instant_response(question)
+            if instant:
+                threading.Thread(target=add_message, args=(user_id, question, instant), daemon=True).start()
+                yield instant
+                return
+            # Fallback to LLM for edge-case conversational queries
             last_err = None
             for model_name in FALLBACK_CHAT_MODELS:
                 try:
