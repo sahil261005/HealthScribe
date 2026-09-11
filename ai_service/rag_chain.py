@@ -113,12 +113,16 @@ CLINICAL_KEYWORDS = {
 }
 
 CONVERSATIONAL_PHRASES = [
-    r"\b(hi|hello|hey|hola|namaste|greetings|yo|sup)\b",
+    r"\b(hi|hello|hey|hola|namaste|greetings|yo|sup|hii|hiii|heya|howdy)\b",
     r"\bgood\s+(morning|afternoon|evening|day|night)\b",
-    r"\bhow\s+(are\s+you|are\s+u|r\s+u|is\s+it\s+going|do\s+you\s+do)\b",
-    r"\b(who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do|what\s+do\s+you\s+do|who\s+made\s+you|what\s+is\s+healthscribe|tell\s+me\s+about\s+yourself)\b",
-    r"\b(thank\s+you|thanks|bye|goodbye|see\s+you)\b",
-    r"^help$"
+    r"\bhow\s+(are\s+(you|u)|r\s+u|is\s+it\s+going|do\s+(you|u)\s+do)\b",
+    r"\b(who|what)\s+(are|r)\s+(you|u)\b",
+    r"\bwhat\s+(can|do)\s+(you|u)\s+do\b",
+    r"\bwho\s+made\s+(you|u)\b",
+    r"\b(what\s+is\s+healthscribe|tell\s+me\s+about\s+(yourself|urself|you|u))\b",
+    r"\b(thank\s+(you|u)|thanks|bye|goodbye|see\s+(you|u)|thnx|ty|thx)\b",
+    r"^(help|\?)$",
+    r"\b(wassup|wazzup|whats\s+up|what\'?s\s+up)\b",
 ]
 
 def is_conversational_query(question: str) -> bool:
