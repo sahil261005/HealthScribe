@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict
@@ -14,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from rag_chain import (
     embed_medical_record,
     chat_with_rag,
+    stream_chat_with_rag,
     clear_user_memory,
     get_vectorstore_stats
 )
@@ -467,6 +469,41 @@ async def chat(request: Request, body: ChatRequest):
 
     return result
 
+
+
+@app.post("/chat/stream")
+@limiter.limit("20/minute")
+async def chat_stream(request: Request, body: ChatRequest):
+    if not body.query or not body.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    def event_stream():
+        try:
+            for chunk in stream_chat_with_rag(
+                user_id=body.user_id,
+                question=body.query.strip(),
+                clear_history=body.clear_history,
+                search_type=body.search_type,
+                k=body.k,
+                lambda_mult=body.lambda_mult,
+            ):
+                payload = json.dumps({"chunk": chunk})
+                yield f"data: {payload}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            err_payload = json.dumps({"error": str(e)})
+            yield f"data: {err_payload}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 @app.post("/chat/clear")
 async def clear_chat(request: dict):

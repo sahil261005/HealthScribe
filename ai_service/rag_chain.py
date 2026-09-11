@@ -1,3 +1,4 @@
+import re
 import os
 import json
 import psycopg2
@@ -68,14 +69,14 @@ def get_embeddings_model():
         )
     return embeddings_model
 
-def get_chat_model(model_name="gemini-3.5-flash-lite"):
+def get_chat_model(model_name="gemini-3.5-flash-lite", timeout=15):
     if GEMINI_API_KEY:
         return ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=GEMINI_API_KEY,
             temperature=0.3,
             max_retries=1,
-            timeout=30,
+            timeout=timeout,
         )
     return None
 
@@ -100,6 +101,52 @@ PATIENT'S QUESTION: {question}
 YOUR RESPONSE:"""
 
 MEDICAL_PROMPT = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+
+# Conversational greeting detection & fast-path prompt
+CLINICAL_KEYWORDS = {
+    "medicine", "medicines", "medication", "medications", "drug", "drugs",
+    "prescription", "prescriptions", "prescribed", "diagnosis", "symptom", "symptoms",
+    "disease", "condition", "fever", "cough", "pain", "headache", "pressure", "bp",
+    "pulse", "heart", "vitals", "vital", "report", "reports", "record", "records",
+    "lab", "test", "tests", "allergy", "allergies", "allergic", "dose", "dosage",
+    "treatment", "hospital", "clinic", "mg", "tablet", "tablets", "syrup"
+}
+
+CONVERSATIONAL_PHRASES = [
+    r"\b(hi|hello|hey|hola|namaste|greetings|yo|sup)\b",
+    r"\bgood\s+(morning|afternoon|evening|day|night)\b",
+    r"\bhow\s+(are\s+you|are\s+u|r\s+u|is\s+it\s+going|do\s+you\s+do)\b",
+    r"\b(who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do|what\s+do\s+you\s+do|who\s+made\s+you|what\s+is\s+healthscribe|tell\s+me\s+about\s+yourself)\b",
+    r"\b(thank\s+you|thanks|bye|goodbye|see\s+you)\b",
+    r"^help$"
+]
+
+def is_conversational_query(question: str) -> bool:
+    if not question:
+        return False
+    q = question.strip().lower()
+    if len(q) > 100:
+        return False
+    words = set(re.findall(r"\b\w+\b", q))
+    if any(w in CLINICAL_KEYWORDS for w in words):
+        return False
+    for pat in CONVERSATIONAL_PHRASES:
+        if re.search(pat, q):
+            return True
+    return False
+
+GREETING_PROMPT_TEMPLATE = """You are HealthScribe Assistant, a friendly, professional, and empathetic clinical companion.
+The user sent a casual greeting or introductory question.
+Respond warmly, politely, and concisely (1-2 sentences).
+Welcome them to HealthScribe and let them know you can help answer questions about their uploaded medical records, prescriptions, symptoms, doctor notes, and vitals.
+Do not provide medical diagnoses or medical advice.
+
+USER MESSAGE: {question}
+
+YOUR RESPONSE:"""
+
+GREETING_PROMPT = ChatPromptTemplate.from_template(GREETING_PROMPT_TEMPLATE)
+
 
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
 
@@ -260,8 +307,7 @@ def get_vectorstore():
             _vectorstore_cache = store
             return store
         except Exception as e:
-            print(f"pgvector error: {e}")
-            return None
+            print(f"pgvector error: {e}, falling back to local chroma")
 
     # Use Chroma locally
     try:
@@ -367,13 +413,33 @@ def format_docs(docs):
 
 def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
     # Main search and answer logic using LangChain and RAG
-    emb = get_embeddings_model()
-    if not GEMINI_API_KEY or emb is None:
+    if not GEMINI_API_KEY:
         return {"error": "AI models not configured"}
 
     try:
         if clear_history:
             clear_user_memory(user_id)
+
+        # ⚡ Conversational Shortcut: Skip vector database search for simple greetings!
+        if is_conversational_query(question):
+            last_err = None
+            for model_name in FALLBACK_CHAT_MODELS:
+                try:
+                    candidate_model = get_chat_model(model_name, timeout=8)
+                    chain = GREETING_PROMPT | candidate_model | StrOutputParser()
+                    answer = chain.invoke({"question": question})
+                    ans_text = str(answer)
+                    threading.Thread(target=add_message, args=(user_id, question, ans_text), daemon=True).start()
+                    return {"answer": ans_text, "model_used": model_name, "fast_path": True}
+                except Exception as e:
+                    last_err = e
+                    continue
+            if last_err:
+                return {"error": f"All chat models unavailable. Last error: {last_err}"}
+
+        emb = get_embeddings_model()
+        if emb is None:
+            return {"error": "AI embeddings not configured"}
 
         store = get_vectorstore()
         if store is None:
@@ -429,6 +495,105 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
 
     except Exception as e:
         return {"error": str(e)}
+
+
+
+def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
+    """
+    Generator yielding string token chunks in real-time.
+    Supports conversational greeting fast-path and multi-model fallback.
+    """
+    if not GEMINI_API_KEY:
+        yield "AI models are not configured on the server."
+        return
+
+    try:
+        if clear_history:
+            clear_user_memory(user_id)
+
+        # ⚡ Conversational Shortcut: Greetings bypass vector search completely for instant streaming
+        if is_conversational_query(question):
+            last_err = None
+            for model_name in FALLBACK_CHAT_MODELS:
+                try:
+                    candidate_model = get_chat_model(model_name, timeout=8)
+                    chain = GREETING_PROMPT | candidate_model | StrOutputParser()
+                    full_answer = []
+                    for chunk in chain.stream({"question": question}):
+                        full_answer.append(chunk)
+                        yield chunk
+                    ans_text = "".join(full_answer)
+                    threading.Thread(target=add_message, args=(user_id, question, ans_text), daemon=True).start()
+                    return
+                except Exception as e:
+                    last_err = e
+                    print(f"Greeting stream model {model_name} failed: {e}. Trying fallback...")
+                    continue
+            yield f"Error generating response: {last_err}"
+            return
+
+        emb = get_embeddings_model()
+        if emb is None:
+            yield "Embeddings model not configured."
+            return
+
+        store = get_vectorstore()
+        if store is None:
+            yield "Vector database is currently unavailable."
+            return
+
+        # Configure retriever search parameters
+        search_kwargs = {"k": k, "fetch_k": 10, "filter": {"user_id": user_id}}
+        if search_type == "mmr":
+            search_kwargs["lambda_mult"] = lambda_mult
+
+        retriever = store.as_retriever(
+            search_type=search_type,
+            search_kwargs=search_kwargs
+        )
+
+        # Fetch relevant documents and conversation history concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_docs = executor.submit(retriever.invoke, question)
+            future_history = executor.submit(format_history, user_id)
+            docs = future_docs.result()
+            history = future_history.result()
+
+        context = format_docs(docs)
+
+        # Multi-model fallback cascade for streaming
+        last_err = None
+        started = False
+
+        for model_name in FALLBACK_CHAT_MODELS:
+            try:
+                candidate_model = get_chat_model(model_name)
+                chain = MEDICAL_PROMPT | candidate_model | StrOutputParser()
+                full_answer = []
+                for chunk in chain.stream({
+                    "context": context,
+                    "chat_history": history,
+                    "question": question
+                }):
+                    started = True
+                    full_answer.append(chunk)
+                    yield chunk
+
+                ans_text = "".join(full_answer)
+                threading.Thread(target=add_message, args=(user_id, question, ans_text), daemon=True).start()
+                return
+            except Exception as e:
+                last_err = e
+                print(f"Streaming model {model_name} failed: {e}. Trying next fallback...")
+                if started:
+                    yield f"\n\n[Connection interrupted: {e}]"
+                    return
+                continue
+
+        yield f"All chat models are currently unavailable: {last_err}"
+
+    except Exception as e:
+        yield f"Chat error: {str(e)}"
 
 
 def get_vectorstore_stats():
