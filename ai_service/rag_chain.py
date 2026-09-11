@@ -69,7 +69,7 @@ def get_embeddings_model():
         )
     return embeddings_model
 
-def get_chat_model(model_name="gemini-3.5-flash-lite", timeout=15):
+def get_chat_model(model_name="gemini-3.5-flash-lite", timeout=20):
     if GEMINI_API_KEY:
         return ChatGoogleGenerativeAI(
             model=model_name,
@@ -425,7 +425,9 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
             last_err = None
             for model_name in FALLBACK_CHAT_MODELS:
                 try:
-                    candidate_model = get_chat_model(model_name, timeout=8)
+                    candidate_model = get_chat_model(model_name, timeout=15)
+                    if candidate_model is None:
+                        continue
                     chain = GREETING_PROMPT | candidate_model | StrOutputParser()
                     answer = chain.invoke({"question": question})
                     ans_text = str(answer)
@@ -472,6 +474,8 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
         for model_name in FALLBACK_CHAT_MODELS:
             try:
                 candidate_model = get_chat_model(model_name)
+                if candidate_model is None:
+                    continue
                 chain = MEDICAL_PROMPT | candidate_model | StrOutputParser()
                 answer = chain.invoke({
                     "context": context,
@@ -516,7 +520,9 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
             last_err = None
             for model_name in FALLBACK_CHAT_MODELS:
                 try:
-                    candidate_model = get_chat_model(model_name, timeout=8)
+                    candidate_model = get_chat_model(model_name, timeout=15)
+                    if candidate_model is None:
+                        continue
                     chain = GREETING_PROMPT | candidate_model | StrOutputParser()
                     full_answer = []
                     for chunk in chain.stream({"question": question}):
@@ -568,6 +574,8 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
         for model_name in FALLBACK_CHAT_MODELS:
             try:
                 candidate_model = get_chat_model(model_name)
+                if candidate_model is None:
+                    continue
                 chain = MEDICAL_PROMPT | candidate_model | StrOutputParser()
                 full_answer = []
                 for chunk in chain.stream({
