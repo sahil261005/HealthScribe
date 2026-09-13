@@ -158,7 +158,7 @@ def get_stats():
 
 @app.post("/extract_data")
 @limiter.limit("5/minute")
-async def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "hybrid"):
+async def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "gemini"):
     # Accepts a scanned prescription image and extracts structured fields
     file_type = uploaded_file.content_type or "image/jpeg"
 
@@ -252,13 +252,13 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
         }
     })
 
-    # --- HYBRID ENGINE: Sarvam Extract API ---
-    if engine != "gemini" and SARVAM_API_KEY:
+    # --- SARVAM OCR ENGINE: Regional & Handwritten Indian Scripts ---
+    if engine in ("sarvam", "hybrid") and SARVAM_API_KEY:
         try:
             import requests
             import time
 
-            logger.info("ENGINE: HYBRID — Submitting to Sarvam Extract API (doc-ai/v1/job/extract)...")
+            logger.info("ENGINE: SARVAM — Submitting to Sarvam Extract API (doc-ai/v1/job/extract)...")
 
             headers = {"api-subscription-key": SARVAM_API_KEY.strip()}
 
@@ -356,7 +356,7 @@ async def extract_data(request: Request, uploaded_file: UploadFile = File(...), 
         except Exception as e:
             logger.error("Sarvam Extract API failed, falling back to Gemini: %s", e)
 
-    # --- GEMINI ENGINE (Fast Vision or Sarvam fallback) ---
+    # --- GEMINI DIRECT VISION: Fast Standard Scan ---
     try:
         logger.info("ENGINE: GEMINI — Running Direct Vision extraction with fallback models...")
 

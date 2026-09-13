@@ -9,7 +9,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     const [errorMessage, setErrorMessage] = useState('');
     const [fileInputKey, setFileInputKey] = useState(0);
 
-    const [selectedEngine, setSelectedEngine] = useState('hybrid');
+    const [selectedEngine, setSelectedEngine] = useState('gemini');
 
     const resetModalState = () => {
         setSelectedFile(null);
@@ -173,17 +173,19 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                             <div className="engine-toggle-row">
                                 <button
                                     type="button"
-                                    className={`btn-engine-tab ${selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
-                                    onClick={() => setSelectedEngine('hybrid')}
-                                >
-                                    Fast Vision (Sarvam)
-                                </button>
-                                <button
-                                    type="button"
                                     className={`btn-engine-tab ${selectedEngine === 'gemini' ? 'active-engine' : ''}`}
                                     onClick={() => setSelectedEngine('gemini')}
                                 >
-                                    Deep Analysis (Gemini)
+                                    <span className="engine-tab-title">⚡ Fast Scan (Gemini)</span>
+                                    <span className="engine-tab-sub">Standard / English • ~5s</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn-engine-tab ${selectedEngine === 'sarvam' || selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
+                                    onClick={() => setSelectedEngine('sarvam')}
+                                >
+                                    <span className="engine-tab-title">🇮🇳 Regional (Sarvam AI)</span>
+                                    <span className="engine-tab-sub">Indian Scripts & Cursive • ~20s</span>
                                 </button>
                             </div>
                         </div>
@@ -205,9 +207,19 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
                     {/* right side - verify extracted data */}
                     <div className="verify-column">
-                        <h3 className="section-title verify-section-title">
-                            Verify Extracted Data
-                        </h3>
+                        <div className="verify-header-row">
+                            <h3 className="section-title verify-section-title">
+                                Verify Extracted Data
+                            </h3>
+                            {extractedData?.ocr_engine && (
+                                <span className={`ocr-engine-badge ${extractedData.ocr_engine.includes('Gemini') ? 'badge-gemini' : 'badge-sarvam'}`}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+                                        {extractedData.ocr_engine.includes('Gemini') ? 'bolt' : 'language'}
+                                    </span>
+                                    <span>Engine: <strong>{extractedData.ocr_engine}</strong></span>
+                                </span>
+                            )}
+                        </div>
 
                         {extractedData ? (
                             <div>

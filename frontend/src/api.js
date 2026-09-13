@@ -60,7 +60,7 @@ aiService.interceptors.response.use(
             const detail = error.response.data.detail;
             const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
             if (detailStr.includes('429') || detailStr.includes('RESOURCE_EXHAUSTED') || detailStr.includes('Quota exceeded') || detailStr.includes('quota')) {
-                error.friendlyMessage = 'Daily AI quota exceeded for Gemini free tier. Please switch to Fast Vision (Sarvam) or wait for quota reset.';
+                error.friendlyMessage = 'Daily AI quota exceeded for Gemini free tier. Please switch to Regional / Indian Scripts (Sarvam) or wait for quota reset.';
             } else if (error.response.status === 503) {
                 error.friendlyMessage = detailStr || 'AI service is temporarily unavailable. Please try again shortly.';
             } else {
