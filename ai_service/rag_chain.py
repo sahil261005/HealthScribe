@@ -419,10 +419,18 @@ def embed_medical_record(record_id, user_id, category, doctor_name, upload_date,
             parts.append(f"Medicines: {'; '.join(med_lines)}")
 
         if vitals:
+            # Expand shorthand labels so vector search matches natural language queries
+            # e.g. "temp" → "Temperature" so "what was my temperature" retrieves this record
+            vital_label_map = {
+                "temp": "Temperature (temp)",
+                "bp": "Blood Pressure (BP)",
+                "pulse": "Pulse / Heart Rate",
+            }
             vital_parts = []
             for name, value in vitals.items():
                 if value:
-                    vital_parts.append(f"{name}: {value}")
+                    expanded = vital_label_map.get(name.lower(), name)
+                    vital_parts.append(f"{expanded}: {value}")
             if vital_parts:
                 parts.append(f"Vitals: {', '.join(vital_parts)}")
 
@@ -520,7 +528,9 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
             return {"error": "vector db not available"}
 
         # Configure retriever search parameters
-        search_kwargs = {"k": k, "fetch_k": 10, "filter": {"user_id": user_id}}
+        # fetch_k=20 gives MMR a wider candidate pool so it doesn't discard
+        # vitals-containing records when multiple similar visits exist on the same date
+        search_kwargs = {"k": k, "fetch_k": 20, "filter": {"user_id": user_id}}
         if search_type == "mmr":
             search_kwargs["lambda_mult"] = lambda_mult
 
@@ -627,7 +637,9 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
             return
 
         # Configure retriever search parameters
-        search_kwargs = {"k": k, "fetch_k": 10, "filter": {"user_id": user_id}}
+        # fetch_k=20 gives MMR a wider candidate pool so it doesn't discard
+        # vitals-containing records when multiple similar visits exist on the same date
+        search_kwargs = {"k": k, "fetch_k": 20, "filter": {"user_id": user_id}}
         if search_type == "mmr":
             search_kwargs["lambda_mult"] = lambda_mult
 
