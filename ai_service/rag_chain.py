@@ -20,6 +20,10 @@ load_dotenv()
 GEMINI_API_KEY = (os.getenv("GENAI_API_KEY") or "").strip() or None
 CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
 CONNECTION_STRING = os.getenv("DATABASE_URL")
+# PGVector uses sqlalchemy, which only accepts postgresql:// and crashes on postgres://
+# (django and psycopg2 accept both, so the same url can work there and fail here)
+if CONNECTION_STRING and CONNECTION_STRING.startswith("postgres://"):
+    CONNECTION_STRING = "postgresql://" + CONNECTION_STRING[len("postgres://"):]
 
 
 _chat_table_initialized = False
@@ -426,7 +430,8 @@ def get_vectorstore():
             # don't fall back to local chroma here. on render the disk is wiped on every
             # restart, so records saved there would just disappear later.
             # returning None means we try postgres again on the next request
-            print(f"pgvector error: {e}")
+            # flush so it actually shows up in the render logs straight away
+            print(f"pgvector error: {type(e).__name__}: {e}", flush=True)
             return None
 
     # Use Chroma locally (only when there is no DATABASE_URL, e.g. local dev)
