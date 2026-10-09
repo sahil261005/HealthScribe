@@ -52,8 +52,7 @@ HealthScribee/
 - allergy detection (warns if a prescribed med matches known allergies)
 - drug interaction checking between old and new medicines
 - multi-doctor comparison (compares treatments from different doctors)
-- shareable health profile with QR code
-- PDF export
+- shareable health profile with QR code (links expire after 7 days and can be disabled)
 - vitals trending chart
 - JWT authentication
 
@@ -66,18 +65,26 @@ HealthScribee/
 - `GET /api/auth/profile/` - get user profile
 - `GET /api/save_record/` - get all records
 - `POST /api/save_record/` - save new record
-- `POST /api/share/generate/` - generate share link
+- `DELETE /api/save_record/?id=<id>` - delete a record
+- `POST /api/share/generate/` - generate share link (expires after 7 days)
+- `DELETE /api/share/generate/` - disable share link
 - `GET /api/share/<token>/` - view shared report
 
 **FastAPI (port 8001)**
 - `GET /` - health check
 - `GET /stats` - vector store stats
 - `POST /extract_data` - OCR + extraction
-- `POST /embed_record` - embed into ChromaDB
 - `POST /chat` - RAG chat
+- `POST /chat/stream` - RAG chat (streaming)
 - `POST /chat/clear` - clear chat history
-- `POST /check_interactions` - drug interaction check
 - `POST /compare_doctors` - compare two doctors' treatments
+
+These need the same JWT the Django login returns (`Authorization: Bearer <token>`). The user is read from the token, not from the request body.
+
+Internal endpoints, only called by Django with the `X-Internal-Key` header:
+- `POST /embed_record` - embed into the vector store
+- `POST /delete_record` - remove from the vector store
+- `POST /check_interactions` - drug interaction check
 
 ## Setup
 
@@ -88,6 +95,8 @@ You need two `.env` files:
 GENAI_API_KEY=your-gemini-key
 SARVAM_API_KEY=your-sarvam-key
 FRONTEND_URL=http://localhost:5173
+JWT_SECRET_KEY=same-value-as-django-SECRET_KEY
+INTERNAL_API_KEY=any-long-random-string
 ```
 
 **backend/.env**
@@ -95,7 +104,12 @@ FRONTEND_URL=http://localhost:5173
 SECRET_KEY=your-django-secret
 DEBUG=True
 FRONTEND_URL=http://localhost:5173
+INTERNAL_API_KEY=same-value-as-in-ai_service
 ```
+
+`DEBUG` is off unless you set it to `True`, and with `DEBUG` off Django won't start without a `SECRET_KEY`.
+
+If some records are missing from the chatbot (e.g. the AI service was asleep when they were saved), run `python manage.py reembed_records` in `backend/`.
 
 Then run each service:
 
@@ -141,11 +155,10 @@ To allow users to search and converse with their consolidated medical history, w
 To prevent abuse of the external AI service endpoints (Gemini / Sarvam AI) and avoid excessive costs, the FastAPI service incorporates an in-memory rate limiter using **SlowAPI**:
 *   **OCR & Extraction (`/extract_data`)**: 5 requests per minute
 *   **RAG Chat (`/chat`)**: 10 requests per minute
-*   **Vector Insertion (`/embed_record`)**: 10 requests per minute
-*   **Drug Interactions (`/check_interactions`)**: 10 requests per minute
+*   **Streaming Chat (`/chat/stream`)**: 20 requests per minute
 *   **Doctor Comparison (`/compare_doctors`)**: 5 requests per minute
 
-This rate limiter tracks request counts in-memory based on the client's IP address, avoiding the need for an external Redis dependency for a single-server deployment. Rate limit breaches return standard HTTP `429 Too Many Requests` responses.
+The limits are counted per logged-in user (from the JWT), not per IP - on Render every request comes through the same proxy, so an IP based limit would be shared by everyone. The internal endpoints Django calls (`/embed_record`, `/delete_record`, `/check_interactions`) are protected by the internal key instead, so they're not rate limited. Counts are kept in memory, avoiding the need for an external Redis dependency for a single-server deployment. Rate limit breaches return standard HTTP `429 Too Many Requests` responses.
 
 ## Evaluation Metrics
 

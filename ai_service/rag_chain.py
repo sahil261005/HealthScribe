@@ -2,6 +2,7 @@ import re
 import random
 import os
 import json
+import time
 import psycopg2
 import threading
 import concurrent.futures
@@ -60,6 +61,25 @@ FALLBACK_CHAT_MODELS = [
     "gemini-3.8-flash",
     "gemini-3.6-flash",
 ]
+
+# don't start trying another chat model after this many seconds,
+# otherwise a message could wait through all 7 models and take minutes
+CHAT_FALLBACK_TIME_LIMIT = 40
+
+
+def is_quota_error(err):
+    text = str(err).lower()
+    return "429" in text or "quota" in text or "resource_exhausted" in text or "resource exhausted" in text
+
+
+def friendly_error(err):
+    # don't show raw errors in the chat, they can have internal details in them.
+    # keep the word "quota" so the frontend can show its quota message
+    print(f"chat error: {err}")
+    if err is not None and is_quota_error(err):
+        return "The AI quota is used up for now, please try again later."
+    return "The assistant is not available right now, please try again in a minute."
+
 
 def get_embeddings_model():
     global embeddings_model
@@ -126,6 +146,14 @@ CONVERSATIONAL_PHRASES = [
     r"\b(wassup|wazzup|whats\s+up|what\'?s\s+up)\b",
 ]
 
+# words that can come with a greeting without changing its meaning ("thanks so much", "hi there")
+FILLER_WORDS = {
+    "there", "again", "so", "much", "a", "lot", "very", "bro", "buddy", "dear", "man", "all",
+    "everyone", "assistant", "healthscribe", "and", "ok", "okay", "please", "great", "good",
+    "nice", "cool", "oh", "hmm", "for", "the", "today", "tomorrow", "later", "soon", "now",
+    "help", "your", "you", "u", "it", "is", "doing", "s",
+}
+
 def is_conversational_query(question: str) -> bool:
     if not question:
         return False
@@ -135,10 +163,22 @@ def is_conversational_query(question: str) -> bool:
     words = set(re.findall(r"\b\w+\b", q))
     if any(w in CLINICAL_KEYWORDS for w in words):
         return False
+
+    # remove the greeting parts from the message
+    leftover = q
+    matched = False
     for pat in CONVERSATIONAL_PHRASES:
-        if re.search(pat, q):
-            return True
-    return False
+        if re.search(pat, leftover):
+            matched = True
+            leftover = re.sub(pat, " ", leftover)
+
+    if not matched:
+        return False
+
+    # if there is still a real question left after the greeting
+    # (like "thanks, what was my temperature?") it should go to the RAG search
+    leftover_words = [w for w in re.findall(r"[a-z]+", leftover) if w not in FILLER_WORDS]
+    return len(leftover_words) == 0
 
 GREETING_PROMPT_TEMPLATE = """You are HealthScribe Assistant, a friendly, professional, and empathetic clinical companion.
 The user sent a casual greeting or introductory question.
@@ -217,6 +257,16 @@ def get_instant_response(question: str):
 
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "chat_histories.json")
 
+# how many past messages go into the prompt
+HISTORY_IN_PROMPT = 6
+# how many messages we keep per user in total
+HISTORY_TO_KEEP = 20
+
+# requests run in parallel threads now, so only one thread
+# should use the shared postgres connection / the json file at a time
+_history_conn_lock = threading.Lock()
+_history_file_lock = threading.Lock()
+
 
 # Chat history utilities (postgres with local JSON file fallback)
 def load_histories():
@@ -246,42 +296,43 @@ def get_history(user_id):
     global _history_conn
     # Try fetching history from Postgres with connection reuse and auto-reconnect
     if CONNECTION_STRING:
-        for attempt in range(2):
-            try:
-                if _history_conn is None or _history_conn.closed:
-                    _history_conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
-                cur = _history_conn.cursor()
-                cur.execute("""
-                    SELECT sender, message FROM (
-                        SELECT sender, message, created_at FROM chat_history
-                        WHERE user_id = %s
-                        ORDER BY created_at DESC
-                        LIMIT 6
-                    ) sub ORDER BY created_at ASC
-                """, (str(user_id),))
-                rows = cur.fetchall()
-                cur.close()
-
-                result = []
-                for sender, msg in rows:
-                    result.append(f"{sender}: {msg}")
-                return result
-            except Exception as e:
-                print(f"postgres history error (attempt {attempt+1}): {e}")
+        with _history_conn_lock:
+            for attempt in range(2):
                 try:
-                    if _history_conn:
-                        _history_conn.close()
-                except Exception:
-                    pass
-                _history_conn = None
-                if attempt == 1:
-                    break
+                    if _history_conn is None or _history_conn.closed:
+                        _history_conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
+                    cur = _history_conn.cursor()
+                    # order by id, not created_at - the question and answer are inserted
+                    # together so they get the exact same created_at, and postgres
+                    # could return them in any order (answer before question)
+                    cur.execute("""
+                        SELECT sender, message FROM (
+                            SELECT id, sender, message FROM chat_history
+                            WHERE user_id = %s
+                            ORDER BY id DESC
+                            LIMIT %s
+                        ) sub ORDER BY id ASC
+                    """, (str(user_id), HISTORY_IN_PROMPT))
+                    rows = cur.fetchall()
+                    cur.close()
 
-    # Fallback to in-memory JSON file history
-    key = str(user_id)
-    if key not in chat_histories:
-        chat_histories[key] = []
-    return chat_histories[key]
+                    result = []
+                    for sender, msg in rows:
+                        result.append(f"{sender}: {msg}")
+                    return result
+                except Exception as e:
+                    print(f"postgres history error (attempt {attempt+1}): {e}")
+                    try:
+                        if _history_conn:
+                            _history_conn.close()
+                    except Exception:
+                        pass
+                    _history_conn = None
+
+    # Fallback to the local JSON file history
+    with _history_file_lock:
+        history = chat_histories.get(str(user_id), [])
+        return list(history[-HISTORY_IN_PROMPT:])
 
 
 def add_message(user_id, question, answer):
@@ -294,17 +345,18 @@ def add_message(user_id, question, answer):
                 "INSERT INTO chat_history (user_id, sender, message) VALUES (%s, %s, %s), (%s, %s, %s)",
                 (str(user_id), "Human", question, str(user_id), "Assistant", answer)
             )
-            # Keep only the last 20 messages for this user to save space
+            # Keep only the last few messages for this user to save space
+            # (by id again, so we never delete half of a question/answer pair)
             cur.execute("""
                 DELETE FROM chat_history
                 WHERE user_id = %s
                 AND id NOT IN (
                     SELECT id FROM chat_history
                     WHERE user_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT 20
+                    ORDER BY id DESC
+                    LIMIT %s
                 )
-            """, (str(user_id), str(user_id)))
+            """, (str(user_id), str(user_id), HISTORY_TO_KEEP))
             conn.commit()
             cur.close()
             conn.close()
@@ -314,16 +366,12 @@ def add_message(user_id, question, answer):
 
     # Fallback to local JSON save
     key = str(user_id)
-    history = get_history(key)
-    history.append(f"Human: {question}")
-    history.append(f"Assistant: {answer}")
-
-    if len(history) > 20:
-        chat_histories[key] = history[-20:]
-    else:
-        chat_histories[key] = history
-
-    save_histories(chat_histories)
+    with _history_file_lock:
+        history = chat_histories.get(key, [])
+        history.append(f"Human: {question}")
+        history.append(f"Assistant: {answer}")
+        chat_histories[key] = history[-HISTORY_TO_KEEP:]
+        save_histories(chat_histories)
 
 
 def clear_user_memory(user_id):
@@ -339,9 +387,10 @@ def clear_user_memory(user_id):
             print(f"postgres clear error: {e}")
 
     key = str(user_id)
-    if key in chat_histories:
-        del chat_histories[key]
-        save_histories(chat_histories)
+    with _history_file_lock:
+        if key in chat_histories:
+            del chat_histories[key]
+            save_histories(chat_histories)
 
 
 def format_history(user_id):
@@ -374,9 +423,13 @@ def get_vectorstore():
             _vectorstore_cache = store
             return store
         except Exception as e:
-            print(f"pgvector error: {e}, falling back to local chroma")
+            # don't fall back to local chroma here. on render the disk is wiped on every
+            # restart, so records saved there would just disappear later.
+            # returning None means we try postgres again on the next request
+            print(f"pgvector error: {e}")
+            return None
 
-    # Use Chroma locally
+    # Use Chroma locally (only when there is no DATABASE_URL, e.g. local dev)
     try:
         store = Chroma(
             persist_directory=CHROMA_DIR,
@@ -503,7 +556,10 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
                 return {"answer": instant, "model_used": "instant", "fast_path": True}
             # Fallback to LLM for edge-case conversational queries
             last_err = None
+            start_time = time.time()
             for model_name in FALLBACK_CHAT_MODELS:
+                if time.time() - start_time > CHAT_FALLBACK_TIME_LIMIT:
+                    break
                 try:
                     candidate_model = get_chat_model(model_name, timeout=15)
                     if candidate_model is None:
@@ -517,7 +573,7 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
                     last_err = e
                     continue
             if last_err:
-                return {"error": f"All chat models unavailable. Last error: {last_err}"}
+                return {"error": friendly_error(last_err)}
 
         emb = get_embeddings_model()
         if emb is None:
@@ -525,7 +581,7 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
 
         store = get_vectorstore()
         if store is None:
-            return {"error": "vector db not available"}
+            return {"error": "The records database is not available right now, please try again in a minute."}
 
         # Configure retriever search parameters
         # fetch_k=20 gives MMR a wider candidate pool so it doesn't discard
@@ -552,8 +608,12 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
         last_err = None
         answer = None
         used_model = None
+        start_time = time.time()
 
         for model_name in FALLBACK_CHAT_MODELS:
+            if time.time() - start_time > CHAT_FALLBACK_TIME_LIMIT:
+                print("chat fallback time limit reached, not trying more models")
+                break
             try:
                 candidate_model = get_chat_model(model_name)
                 if candidate_model is None:
@@ -573,14 +633,14 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
                 continue
 
         if answer is None:
-            return {"error": f"All chat models unavailable. Last error: {last_err}"}
+            return {"error": friendly_error(last_err)}
 
         ans_text = str(answer)
         threading.Thread(target=add_message, args=(user_id, question, ans_text), daemon=True).start()
         return {"answer": ans_text, "model_used": used_model}
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": friendly_error(e)}
 
 
 
@@ -606,7 +666,10 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
                 return
             # Fallback to LLM for edge-case conversational queries
             last_err = None
+            start_time = time.time()
             for model_name in FALLBACK_CHAT_MODELS:
+                if time.time() - start_time > CHAT_FALLBACK_TIME_LIMIT:
+                    break
                 try:
                     candidate_model = get_chat_model(model_name, timeout=15)
                     if candidate_model is None:
@@ -623,7 +686,7 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
                     last_err = e
                     print(f"Greeting stream model {model_name} failed: {e}. Trying fallback...")
                     continue
-            yield f"Error generating response: {last_err}"
+            yield friendly_error(last_err)
             return
 
         emb = get_embeddings_model()
@@ -633,7 +696,7 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
 
         store = get_vectorstore()
         if store is None:
-            yield "Vector database is currently unavailable."
+            yield "The records database is not available right now, please try again in a minute."
             return
 
         # Configure retriever search parameters
@@ -660,8 +723,12 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
         # Multi-model fallback cascade for streaming
         last_err = None
         started = False
+        start_time = time.time()
 
         for model_name in FALLBACK_CHAT_MODELS:
+            if time.time() - start_time > CHAT_FALLBACK_TIME_LIMIT:
+                print("chat fallback time limit reached, not trying more models")
+                break
             try:
                 candidate_model = get_chat_model(model_name)
                 if candidate_model is None:
@@ -684,14 +751,14 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
                 last_err = e
                 print(f"Streaming model {model_name} failed: {e}. Trying next fallback...")
                 if started:
-                    yield f"\n\n[Connection interrupted: {e}]"
+                    yield "\n\n[Connection interrupted, please try again]"
                     return
                 continue
 
-        yield f"All chat models are currently unavailable: {last_err}"
+        yield friendly_error(last_err)
 
     except Exception as e:
-        yield f"Chat error: {str(e)}"
+        yield friendly_error(e)
 
 
 def get_vectorstore_stats():
@@ -700,11 +767,26 @@ def get_vectorstore_stats():
         return {"error": "vector db not available"}
 
     try:
-        collection = store._collection
-        count = collection.count()
+        if isinstance(store, PGVector):
+            # pgvector doesn't have _collection like chroma, so count the rows ourselves
+            conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=5)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*) FROM langchain_pg_embedding e
+                JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                WHERE c.name = %s
+            """, ("medical_records",))
+            count = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return {"total_documents": count, "store": "pgvector"}
+
+        count = store._collection.count()
         return {
             "total_documents": count,
+            "store": "chroma",
             "persist_directory": CHROMA_DIR
         }
     except Exception as e:
-        return {"error": str(e)}
+        print(f"stats error: {e}")
+        return {"error": "could not read vector db stats"}
