@@ -93,10 +93,13 @@ function AuthPage() {
 
                         <form onSubmit={handleSubmit} className="auth-form">
                             <div className="auth-input-group">
-                                <label className="auth-label">{isLoginMode ? 'Email' : 'Username'}</label>
+                                {/* login works with email OR username (the backend checks both),
+                                    so this can't be type="email" or the browser blocks usernames */}
+                                <label className="auth-label">{isLoginMode ? 'Email or Username' : 'Username'}</label>
                                 <input
-                                    type={isLoginMode ? "email" : "text"}
-                                    placeholder={isLoginMode ? "Enter your email" : "Enter your username"}
+                                    type="text"
+                                    autoComplete="username"
+                                    placeholder={isLoginMode ? "Enter your email or username" : "Enter your username"}
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
                                     required

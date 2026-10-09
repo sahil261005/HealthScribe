@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import html2pdf from 'html2pdf.js';
+import { QRCodeSVG } from 'qrcode.react';
 import MultiDoctorComparison from './MultiDoctorComparison';
+import { formatDoctorName } from '../utils';
 
 // custom tooltip for the doctor conflict chart
 const ConflictTooltip = ({ active, payload, label }) => {
@@ -56,13 +57,11 @@ const VitalsTooltip = ({ active, payload, label }) => {
 const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings }) => {
     const [allRecords, setAllRecords] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isExporting, setIsExporting] = useState(false);
-    
+
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [shareToken, setShareToken] = useState('');
+    const [shareExpiresAt, setShareExpiresAt] = useState(null);
     const [isSharing, setIsSharing] = useState(false);
-
-    const dashboardRef = useRef(null);
 
     useEffect(() => {
         fetchAllRecords();
@@ -101,32 +100,34 @@ const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings 
         });
     };
 
-    const handleExportPDF = () => {
-        setIsExporting(true);
-        const element = dashboardRef.current;
-        const options = {
-            margin:       10,
-            filename:     'HealthScribe_History.pdf',
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().from(element).set(options).save()
-            .then(() => setIsExporting(false))
-            .catch(() => setIsExporting(false));
-    };
-
     const handleShareProfile = async () => {
         setIsSharing(true);
         try {
             const response = await api.post('share/generate/');
             setShareToken(response.data.token);
+            setShareExpiresAt(response.data.expires_at);
             setShareModalOpen(true);
         } catch (error) {
             console.error("Failed to generate share link", error);
             alert("Failed to generate share link");
         } finally {
             setIsSharing(false);
+        }
+    };
+
+    // turns off the share link, anyone who has the old link can't open it anymore
+    const handleDisableShare = async () => {
+        if (!window.confirm("Disable this link? Anyone you shared it with won't be able to open it anymore.")) {
+            return;
+        }
+        try {
+            await api.delete('share/generate/');
+            setShareModalOpen(false);
+            setShareToken('');
+            alert('Share link disabled.');
+        } catch (error) {
+            console.error("Failed to disable share link", error);
+            alert("Failed to disable share link");
         }
     };
 
@@ -251,7 +252,6 @@ const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings 
     }).filter(dp => dp.SystolicBP || dp.Pulse || dp.Temperature);
 
     const shareUrl = `${window.location.origin}/?token=${shareToken}`;
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}`;
 
     return (
         <div className="dashboard-container">
@@ -265,8 +265,44 @@ const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings 
                 </div>
             </div>
 
+            {/* allergy + drug interaction warnings from the last saved prescription */}
+            {interactionWarnings && interactionWarnings.length > 0 && (
+                <div className="medication-warning-banner">
+                    <div className="warning-banner-header">
+                        <div className="warning-banner-left">
+                            <span className="material-symbols-outlined warning-icon">warning</span>
+                            <div>
+                                <h3 className="warning-title">
+                                    Medication Safety Alert
+                                </h3>
+                                <p className="warning-subtitle">
+                                    We found possible problems with your newly saved prescription. Please check these with your doctor:
+                                </p>
+                                <ul className="warning-list">
+                                    {interactionWarnings.map((warning, idx) => (
+                                        <li key={idx} className="warning-list-item">
+                                            <span className="warning-bullet">•</span>
+                                            <span>{warning}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                        {onDismissWarnings && (
+                            <button
+                                onClick={onDismissWarnings}
+                                className="warning-close-btn"
+                                title="Dismiss alert"
+                                aria-label="Dismiss alert"
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
-            <div ref={dashboardRef}>
+            <div>
                 {/* summary row */}
                 <div className="dashboard-stats-grid">
                     <div className="dashboard-stat-card">
@@ -399,7 +435,7 @@ const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings 
                                         <div className="timeline-header-actions">
                                             {record.doctor_name && (
                                                 <span className="timeline-doctor-badge">
-                                                    Dr. {record.doctor_name}
+                                                    {formatDoctorName(record.doctor_name)}
                                                 </span>
                                             )}
                                             <button 
@@ -462,15 +498,26 @@ const Dashboard = ({ onUploadClick, interactionWarnings = [], onDismissWarnings 
                         </div>
                         <h2 className="modal-share-title">Share Health Profile</h2>
                         <p className="modal-share-description">Scan the QR code or copy the link to share your medical history.</p>
-                        
+
+                        {/* QR code is made in the browser - before we sent the link to a
+                            third party QR website, which leaked the private link to them */}
                         <div className="modal-qr-container">
-                            <img src={qrCodeUrl} alt="QR Code" className="modal-qr-image" />
+                            <QRCodeSVG value={shareUrl} size={200} className="modal-qr-image" />
                         </div>
 
                         <div className="modal-input-row">
                             <input type="text" value={shareUrl} readOnly className="modal-share-input" />
                             <button onClick={() => { navigator.clipboard.writeText(shareUrl); alert('Copied!'); }} className="btn-copy">
                                 Copy
+                            </button>
+                        </div>
+
+                        <div className="share-expiry-row">
+                            {shareExpiresAt && (
+                                <span>Link expires on {formatDate(shareExpiresAt)}</span>
+                            )}
+                            <button onClick={handleDisableShare} className="btn-disable-share">
+                                Disable link
                             </button>
                         </div>
                     </div>

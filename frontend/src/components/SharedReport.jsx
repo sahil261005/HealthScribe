@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { formatDoctorName } from '../utils';
 
 const SharedReport = ({ token }) => {
     const [data, setData] = useState(null);
@@ -13,7 +14,7 @@ const SharedReport = ({ token }) => {
                 const response = await axios.get(`${apiUrl}share/${token}/`);
                 setData(response.data);
             } catch (err) {
-                setError(err.response?.data?.message || 'Failed to load report. Link may be invalid or expired.');
+                setError(err.response?.data?.error || 'Failed to load report. Link may be invalid or expired.');
             } finally {
                 setLoading(false);
             }
@@ -40,8 +41,11 @@ const SharedReport = ({ token }) => {
         );
     }
 
-    const allAllergies = [...new Set(data.records.flatMap(r => r.allergies))];
-    const latestRecord = data.records.length > 0 ? data.records[data.records.length - 1] : null;
+    // sort oldest -> newest ourselves so "latest" really is the latest visit
+    const records = [...data.records].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const allAllergies = [...new Set(records.flatMap(r => r.allergies))];
+    const latestRecord = records.length > 0 ? records[records.length - 1] : null;
+    const latestVitals = latestRecord ? latestRecord.vitals.filter(v => v.value) : [];
 
     return (
         <div className="shared-report-page">
@@ -91,9 +95,9 @@ const SharedReport = ({ token }) => {
                             <div className="shared-report-box-title-row">
                                 <h3 className="shared-report-box-title">Latest Vitals</h3>
                             </div>
-                            {latestRecord && latestRecord.vitals.length > 0 ? (
+                            {latestVitals.length > 0 ? (
                                 <div className="shared-report-vitals-grid">
-                                    {latestRecord.vitals.map((v, i) => (
+                                    {latestVitals.map((v, i) => (
                                         <div key={i} className="shared-report-vital-cell">
                                             <div className="shared-report-vital-name">{v.name}</div>
                                             <div className="shared-report-vital-value">{v.value}</div>
@@ -112,7 +116,7 @@ const SharedReport = ({ token }) => {
                     </h3>
                     
                     <div className="shared-report-timeline-list">
-                        {data.records.slice().reverse().map((record) => (
+                        {records.slice().reverse().map((record) => (
                             <div key={record.id} className="shared-report-timeline-card">
                                 <div className="shared-report-timeline-header">
                                     <div>
@@ -123,7 +127,7 @@ const SharedReport = ({ token }) => {
                                     </div>
                                     {record.doctor_name && (
                                         <span className="shared-report-doctor-badge">
-                                            Dr. {record.doctor_name}
+                                            {formatDoctorName(record.doctor_name)}
                                         </span>
                                     )}
                                 </div>

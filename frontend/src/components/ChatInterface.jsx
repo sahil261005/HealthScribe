@@ -3,7 +3,7 @@ import { aiService } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const ChatInterface = () => {
-    const { user } = useAuth();
+    const { user, getAccessToken } = useAuth();
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState([
         { sender: 'bot', text: "Hello! I'm your HealthScribe assistant. Ask me about your records." }
@@ -30,14 +30,17 @@ const ChatInterface = () => {
         let botMessageAdded = false;
 
         try {
+            // the AI service works out who we are from the login token
+            // (if the token expired this fails and we fall back to aiService below,
+            // which refreshes the token automatically)
             const response = await fetch(`${baseUrl}/chat/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    Authorization: `Bearer ${getAccessToken()}`,
                 },
                 body: JSON.stringify({
-                    query: text,
-                    user_id: user?.id || 1
+                    query: text
                 })
             });
 
@@ -106,8 +109,7 @@ const ChatInterface = () => {
             if (!botMessageAdded) {
                 try {
                     const res = await aiService.post('/chat', {
-                        query: text,
-                        user_id: user?.id || 1
+                        query: text
                     });
                     const answer = res.data.answer || 'No response from the assistant.';
                     setChatMessages(prev => [...prev, { sender: 'bot', text: answer }]);
@@ -134,7 +136,7 @@ const ChatInterface = () => {
 
     const handleClearChat = async () => {
         try {
-            await aiService.post('/chat/clear', { user_id: user?.id || 1 });
+            await aiService.post('/chat/clear');
         } catch {
             // not a big deal if clear fails
         }

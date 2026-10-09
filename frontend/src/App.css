@@ -2228,6 +2228,139 @@ body {
   background-color: #2563eb;
 }
 
+.share-expiry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.btn-disable-share {
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.btn-disable-share:hover {
+  background-color: #fef2f2;
+}
+
+/* medication safety alert banner (allergy + drug interaction warnings).
+   these styles were only in Dashboard.css, which isn't imported anywhere,
+   so the banner used to show up without any styling */
+.medication-warning-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 5px solid #f59e0b;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.warning-banner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.warning-banner-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex: 1;
+}
+
+.warning-icon {
+  font-size: 26px !important;
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.warning-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 4px 0;
+}
+
+.warning-subtitle {
+  font-size: 0.875rem;
+  color: #b45309;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.warning-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.warning-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: #78350f;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px;
+  padding: 10px 14px;
+  line-height: 1.45;
+}
+
+.warning-bullet {
+  color: #d97706;
+  font-weight: bold;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.warning-close-btn {
+  background: none;
+  border: none;
+  color: #b45309;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.warning-close-btn:hover {
+  background: rgba(245, 158, 11, 0.15);
+  color: #78350f;
+}
+
 /* Engine Selector Toggle */
 .engine-selector-group {
   margin: 12px 0;

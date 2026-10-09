@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { aiService } from '../api';
 import api from '../api';
 
@@ -25,7 +25,23 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         }
     }, [isOpen]);
 
+    // make the image preview url once per file (not on every render)
+    // and free it when the file changes, otherwise it leaks memory
+    const previewUrl = useMemo(() => {
+        if (!selectedFile || selectedFile.type === 'application/pdf') return '';
+        return URL.createObjectURL(selectedFile);
+    }, [selectedFile]);
+
+    useEffect(() => {
+        return () => {
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        };
+    }, [previewUrl]);
+
     if (!isOpen) return null;
+
+    // today in YYYY-MM-DD, the visit date can't be in the future
+    const today = new Date().toLocaleDateString('en-CA');
 
     const handleClose = () => {
         resetModalState();
@@ -52,7 +68,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     // handlers for editing the extracted medicines before saving
     const handleMedicineChange = (idx, field, val) => {
         const updatedMeds = [...extractedData.medicines];
-        updatedMeds[idx][field] = val;
+        // copy the medicine object too, changing it directly would mutate the old state
+        updatedMeds[idx] = { ...updatedMeds[idx], [field]: val };
         setExtractedData({ ...extractedData, medicines: updatedMeds });
     };
 
@@ -160,7 +177,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                     </div>
                                 ) : (
                                     <img
-                                        src={URL.createObjectURL(selectedFile)}
+                                        src={previewUrl}
                                         alt="Preview"
                                         className="preview-img"
                                     />
@@ -234,6 +251,21 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                             doctor_name: e.target.value
                                         })}
                                         placeholder="e.g. Dr. Smith (Optional)"
+                                    />
+                                </div>
+
+                                {/* date on the prescription - if it's empty the upload date is used */}
+                                <div className="input-row doctor-name-row">
+                                    <span className="text-sm doctor-name-label">Visit Date:</span>
+                                    <input
+                                        type="date"
+                                        className="mini-input doctor-name-input"
+                                        value={extractedData.visit_date || ''}
+                                        max={today}
+                                        onChange={(e) => setExtractedData({
+                                            ...extractedData,
+                                            visit_date: e.target.value
+                                        })}
                                     />
                                 </div>
 

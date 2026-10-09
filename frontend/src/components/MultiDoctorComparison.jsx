@@ -6,8 +6,11 @@ const MultiDoctorComparison = ({ records }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // only show if we have records from at least 2 different doctors
-    const recordsWithDoctors = records.filter(r => r.doctor_name && r.doctor_name.trim() !== '');
+    // only show if we have records from at least 2 different doctors.
+    // sorted newest first here, so we don't depend on the order the parent passes in
+    const recordsWithDoctors = records
+        .filter(r => r.doctor_name && r.doctor_name.trim() !== '')
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
     const uniqueDoctors = [...new Set(recordsWithDoctors.map(r => r.doctor_name))];
 
     if (uniqueDoctors.length < 2) {
@@ -15,10 +18,11 @@ const MultiDoctorComparison = ({ records }) => {
     }
 
     // pick the two most recent records from different doctors
+    // (record1 = newest, record2 = the latest one from a different doctor)
     let record1 = null;
     let record2 = null;
 
-    for (let r of [...recordsWithDoctors].reverse()) {
+    for (let r of recordsWithDoctors) {
         if (!record1) {
             record1 = r;
         } else if (!record2 && r.doctor_name !== record1.doctor_name) {
@@ -54,15 +58,16 @@ const MultiDoctorComparison = ({ records }) => {
                 </div>
             </div>
 
+            {/* older visit on the left, newer on the right */}
             <div className="comparison-doctors-row">
-                <div className="comparison-doctor-col">
-                    <div className="comparison-doctor-name">{record1.doctor_name}</div>
-                    <div className="comparison-doctor-date">{new Date(record1.date).toLocaleDateString()}</div>
-                </div>
-                <span className="comparison-arrow">→</span>
                 <div className="comparison-doctor-col">
                     <div className="comparison-doctor-name">{record2.doctor_name}</div>
                     <div className="comparison-doctor-date">{new Date(record2.date).toLocaleDateString()}</div>
+                </div>
+                <span className="comparison-arrow">→</span>
+                <div className="comparison-doctor-col">
+                    <div className="comparison-doctor-name">{record1.doctor_name}</div>
+                    <div className="comparison-doctor-date">{new Date(record1.date).toLocaleDateString()}</div>
                 </div>
             </div>
 

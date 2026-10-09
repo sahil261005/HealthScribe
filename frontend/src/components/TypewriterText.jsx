@@ -22,9 +22,12 @@ const TypewriterText = ({
             // Pause before starting to delete
             timer = setTimeout(() => setIsDeleting(true), pauseDuration);
         } else if (isDeleting && currentText === '') {
-            // Move to next phrase after deleting
-            setIsDeleting(false);
-            setPhraseIndex((prevIndex) => (prevIndex + 1) % phrases.length);
+            // Move to next phrase after deleting (inside a timeout like the other
+            // branches, calling setState directly in the effect causes extra renders)
+            timer = setTimeout(() => {
+                setIsDeleting(false);
+                setPhraseIndex((prevIndex) => (prevIndex + 1) % phrases.length);
+            }, typingSpeed);
         } else {
             // Type or delete characters
             const speed = isDeleting ? deletingSpeed : typingSpeed;
