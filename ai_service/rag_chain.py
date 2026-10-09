@@ -25,6 +25,13 @@ CONNECTION_STRING = os.getenv("DATABASE_URL")
 if CONNECTION_STRING and CONNECTION_STRING.startswith("postgres://"):
     CONNECTION_STRING = "postgresql://" + CONNECTION_STRING[len("postgres://"):]
 
+# sqlalchemy 2.1 changed the default postgres driver to psycopg (v3), but we only install
+# psycopg2, so PGVector crashed with "No module named 'psycopg'". tell it to use psycopg2.
+# (psycopg2.connect for the chat history still needs the normal url, so keep both)
+PGVECTOR_URL = None
+if CONNECTION_STRING:
+    PGVECTOR_URL = CONNECTION_STRING.replace("postgresql://", "postgresql+psycopg2://", 1)
+
 
 _chat_table_initialized = False
 
@@ -420,7 +427,7 @@ def get_vectorstore():
     if CONNECTION_STRING:
         try:
             store = PGVector(
-                connection_string=CONNECTION_STRING,
+                connection_string=PGVECTOR_URL,
                 embedding_function=emb,
                 collection_name="medical_records"
             )
