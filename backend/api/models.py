@@ -1,6 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
+from datetime import timedelta
 import uuid
+
+# share links stop working after this many days
+SHARE_LINK_DAYS = 7
 
 
 class UserProfile(models.Model):
@@ -18,6 +23,8 @@ class MedicalRecord(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     file = models.FileField(upload_to='records/', blank=True, null=True)
     upload_date = models.DateTimeField(auto_now_add=True)
+    # date written on the prescription (upload_date is just when it was uploaded)
+    visit_date = models.DateField(null=True, blank=True)
     category = models.CharField(max_length=100, blank=True)
     doctor_name = models.CharField(max_length=255, blank=True)
 
@@ -56,6 +63,9 @@ class HealthEntity(models.Model):
     # for medicines this is dosage, for vitals this is the reading
     value = models.CharField(max_length=255, blank=True)
 
+    # why the medicine was given, exactly as the AI / user wrote it
+    reason = models.CharField(max_length=255, blank=True, default="")
+
     # which symptom this medicine is treating
     related_symptom = models.ForeignKey(
         'self',
@@ -82,6 +92,12 @@ class ShareableLink(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='shareable_link')
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
+    def expires_at(self):
+        return self.created_at + timedelta(days=SHARE_LINK_DAYS)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at()
+
     def __str__(self):
         return f"Share link for {self.user.username}"

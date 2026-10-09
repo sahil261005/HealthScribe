@@ -3,16 +3,23 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 import dj_database_url
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# secret key - using env variable so its not hardcoded in production
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
+# debug is off unless you turn it on in .env, so production never shows error pages by accident
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+# secret key - using env variable so its not hardcoded in production
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-dev-key-change-in-production'
+    else:
+        raise ImproperlyConfigured("SECRET_KEY is not set. Add it to your environment variables.")
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',') if h.strip()]
 
@@ -25,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'api',
 ]
@@ -67,7 +75,8 @@ DATABASES = {
     'default': dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
         conn_max_age=600,
-        ssl_require=not DEBUG
+        # only postgres needs ssl, sqlite breaks if we pass sslmode to it
+        ssl_require=bool(os.getenv('DATABASE_URL')) and not DEBUG
     )
 }
 
@@ -102,9 +111,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS configuration - allow all origins for frontend clients using JWT tokens
+# CORS configuration - allow all origins for frontend clients using JWT tokens.
+# we send the token in the Authorization header (not cookies) so credentials stay off
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = False
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -122,7 +132,7 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 
-    # rotate tokens so old ones cant be reused
+    # rotate tokens so old ones cant be reused (needs the token_blacklist app above)
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 
