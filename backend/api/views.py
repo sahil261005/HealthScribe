@@ -6,12 +6,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.db import transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_date
 from .models import MedicalRecord, HealthEntity, UserProfile, ShareableLink
 from .serializers import UserRegistrationSerializer, UserProfileSerializer, EmailOrUsernameTokenObtainPairSerializer
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import requests
 import os
+import re
 import threading
 import time
 
@@ -23,10 +25,15 @@ AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
 # e.g. someone allergic to penicillin should not get amoxicillin either.
 # not a complete list, just the common ones we see on prescriptions
 PENICILLINS = ["penicillin", "amoxicillin", "amoxycillin", "ampicillin", "cloxacillin",
-               "flucloxacillin", "dicloxacillin", "piperacillin", "augmentin", "amoxyclav"]
+               "flucloxacillin", "dicloxacillin", "piperacillin", "augmentin", "amoxyclav",
+               "novamox", "clavam", "moxikind"]
 SULFA_DRUGS = ["sulfamethoxazole", "sulphamethoxazole", "cotrimoxazole", "co-trimoxazole",
                "septran", "bactrim", "sulfasalazine", "sulfadiazine"]
-NSAIDS = ["aspirin", "ibuprofen", "diclofenac", "naproxen", "aceclofenac", "ketorolac", "mefenamic"]
+# brand names are added too because indian prescriptions mostly use brands
+# (ecosprin is aspirin, brufen/combiflam have ibuprofen, meftal is mefenamic acid etc)
+NSAIDS = ["aspirin", "ibuprofen", "diclofenac", "naproxen", "aceclofenac", "ketorolac", "mefenamic",
+          "ecosprin", "disprin", "loprin", "brufen", "ibugesic", "combiflam", "voveran", "dynapar",
+          "zerodol", "hifenac", "meftal", "naprosyn", "toradol"]
 
 ALLERGY_GROUPS = {
     "penicillin": PENICILLINS,
@@ -34,6 +41,9 @@ ALLERGY_GROUPS = {
     "sulpha": SULFA_DRUGS,
     "aspirin": NSAIDS,
     "nsaid": NSAIDS,
+    "ibuprofen": NSAIDS,
+    "diclofenac": NSAIDS,
+    "mefenamic": NSAIDS,
 }
 
 
@@ -162,8 +172,12 @@ def send_to_ai_service_in_background(path, payload, description):
 
 
 def check_drug_interactions(user, record, new_names):
-    # asks the AI service if the new medicines clash with anything the user took before
+    # asks the AI service if the new medicines clash with what the user is taking right now.
+    # only medicines from the last 90 days count, an antibiotic from 2 years ago is not "current"
+    cutoff = date.today() - timedelta(days=90)
+    recent = Q(record__visit_date__gte=cutoff) | Q(record__visit_date__isnull=True, record__upload_date__date__gte=cutoff)
     past_names = HealthEntity.objects.filter(
+        recent,
         record__user=user,
         type='MEDICINE'
     ).exclude(record=record).values_list('name', flat=True)
@@ -227,8 +241,10 @@ def parse_visit_date(value):
         parsed = parse_date(str(value).strip())
     except ValueError:
         return None
-    # a date in the future means the date was misread
-    if parsed is None or parsed > date.today():
+    # a date in the future means the date was misread.
+    # the server runs on UTC and india is 5:30 ahead, so a prescription from "today"
+    # can look like tomorrow to the server - allow one extra day for that
+    if parsed is None or parsed > date.today() + timedelta(days=1):
         return None
     return parsed
 
@@ -250,14 +266,23 @@ def find_related_symptom(reason, symptom_map):
 def find_allergy_match(medicine_name, allergies):
     # returns the allergy that this medicine clashes with, or None
     med = medicine_name.lower()
+    med_words = re.findall(r"[a-z0-9]+", med)
     for allergy in allergies:
         allergy_lower = allergy.strip().lower()
         if len(allergy_lower) < 3:
             continue
-        if allergy_lower in med:
+        # short names only count as a whole word, otherwise "pan" would match "pantop"
+        if allergy_lower in med_words:
+            return allergy.strip()
+        if len(allergy_lower) >= 5 and allergy_lower in med:
             return allergy.strip()
         for group, drugs in ALLERGY_GROUPS.items():
-            if group in allergy_lower:
+            in_this_family = group in allergy_lower
+            # the allergy can also be written as a brand, like "brufen"
+            for drug in drugs:
+                if drug in allergy_lower:
+                    in_this_family = True
+            if in_this_family:
                 for drug in drugs:
                     if drug in med:
                         return allergy.strip()
