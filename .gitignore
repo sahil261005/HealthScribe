@@ -45,3 +45,20 @@ To_do.txt
 
 ai_service/eval_data/images
 graphify-out/
+
+# /brag launch videos - everything (videos, posters, plans, render scripts, node_modules) lives in these folders
+brag-output*/
+
+# evaluation test data and saved results stay local
+ai_service/eval_data/ocr/
+ai_service/eval_data/rag/
+ai_service/eval_data/results/
+
+# private study guide, not for github
+EXPLANATION.md
+EXPLANATION.pdf
+
+# private local tools (PDF builder for the study guide and README) and the generated PDFs
+private_tools/
+EXPLANATION.pdf
+README.pdf

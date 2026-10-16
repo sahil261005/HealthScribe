@@ -12,3 +12,4 @@ test_main.py
 eval_data/images/
 
 
+eval_data/results/.embedding_cache.json
