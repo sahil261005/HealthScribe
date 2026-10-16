@@ -6,6 +6,7 @@ import time
 import psycopg2
 import threading
 import concurrent.futures
+from datetime import datetime
 from dotenv import load_dotenv
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -121,6 +122,7 @@ IMPORTANT RULES:
 4. Be concise, friendly, and accurate in your responses.
 5. When mentioning medicines, always include the dosage if available.
 6. If asked about dates, try to mention when the record was created.
+7. The records are listed newest first. For "latest", "last" or "most recent" questions, use the newest record that has that information.
 
 PATIENT'S RELEVANT MEDICAL RECORDS:
 {context}
@@ -455,6 +457,50 @@ def get_vectorstore():
         return None
 
 
+def build_record_text(category, doctor_name, upload_date, symptoms, medicines, vitals, allergies):
+    # the text that gets embedded and that the chat model reads for one record
+    parts = []
+    parts.append(f"Medical Record from {upload_date}")
+    parts.append(f"Category: {category}")
+    if doctor_name:
+        parts.append(f"Doctor: {doctor_name}")
+
+    if symptoms:
+        parts.append(f"Symptoms: {', '.join(symptoms)}")
+
+    if medicines:
+        med_lines = []
+        for med in medicines:
+            line = med.get("name", "Unknown")
+            if med.get("dosage"):
+                line += f" ({med['dosage']})"
+            if med.get("reason"):
+                line += f" for {med['reason']}"
+            med_lines.append(line)
+        parts.append(f"Medicines: {'; '.join(med_lines)}")
+
+    if vitals:
+        # Expand shorthand labels so vector search matches natural language queries
+        # e.g. "temp" → "Temperature" so "what was my temperature" retrieves this record
+        vital_label_map = {
+            "temp": "Temperature (temp)",
+            "bp": "Blood Pressure (BP)",
+            "pulse": "Pulse / Heart Rate",
+        }
+        vital_parts = []
+        for name, value in vitals.items():
+            if value:
+                expanded = vital_label_map.get(name.lower(), name)
+                vital_parts.append(f"{expanded}: {value}")
+        if vital_parts:
+            parts.append(f"Vitals: {', '.join(vital_parts)}")
+
+    if allergies:
+        parts.append(f"Allergies: {', '.join(allergies)}")
+
+    return "\n".join(parts)
+
+
 def embed_medical_record(record_id, user_id, category, doctor_name, upload_date,
                           symptoms, medicines, vitals, allergies):
     # Formats a clinical record and embeds it into the vector database
@@ -463,46 +509,7 @@ def embed_medical_record(record_id, user_id, category, doctor_name, upload_date,
         return False
 
     try:
-        parts = []
-        parts.append(f"Medical Record from {upload_date}")
-        parts.append(f"Category: {category}")
-        if doctor_name:
-            parts.append(f"Doctor: {doctor_name}")
-
-        if symptoms:
-            parts.append(f"Symptoms: {', '.join(symptoms)}")
-
-        if medicines:
-            med_lines = []
-            for med in medicines:
-                line = med.get("name", "Unknown")
-                if med.get("dosage"):
-                    line += f" ({med['dosage']})"
-                if med.get("reason"):
-                    line += f" for {med['reason']}"
-                med_lines.append(line)
-            parts.append(f"Medicines: {'; '.join(med_lines)}")
-
-        if vitals:
-            # Expand shorthand labels so vector search matches natural language queries
-            # e.g. "temp" → "Temperature" so "what was my temperature" retrieves this record
-            vital_label_map = {
-                "temp": "Temperature (temp)",
-                "bp": "Blood Pressure (BP)",
-                "pulse": "Pulse / Heart Rate",
-            }
-            vital_parts = []
-            for name, value in vitals.items():
-                if value:
-                    expanded = vital_label_map.get(name.lower(), name)
-                    vital_parts.append(f"{expanded}: {value}")
-            if vital_parts:
-                parts.append(f"Vitals: {', '.join(vital_parts)}")
-
-        if allergies:
-            parts.append(f"Allergies: {', '.join(allergies)}")
-
-        text = "\n".join(parts)
+        text = build_record_text(category, doctor_name, upload_date, symptoms, medicines, vitals, allergies)
 
         # We keep the record in a single chunk so the LLM doesn't lose the
         # semantic link between symptoms and their prescribed drugs.
@@ -542,6 +549,47 @@ def delete_medical_record(record_id):
         return False
 
 
+# words that mean the user wants the newest record, embeddings don't understand time at all
+TIME_WORDS = re.compile(r"\b(latest|last|recent|recently|most recent|current|currently|newest|now|today)\b", re.IGNORECASE)
+
+
+def record_date(doc):
+    # upload_date in the metadata looks like "March 15, 2026" (sent by django)
+    try:
+        return datetime.strptime(doc.metadata.get("upload_date", ""), "%B %d, %Y")
+    except (ValueError, TypeError):
+        return None
+
+
+def retrieve_records(store, question, user_id, search_type="mmr", k=5, lambda_mult=0.7):
+    # finds the records used to answer a question. used by both chat functions and evaluate_rag.py
+    search_kwargs = {"k": k, "filter": {"user_id": user_id}}
+    if search_type == "mmr":
+        # fetch_k only exists for mmr - plain similarity search crashes if we pass it.
+        # fetch_k=20 gives MMR a wider candidate pool so it doesn't drop records with vitals
+        search_kwargs["fetch_k"] = 20
+        search_kwargs["lambda_mult"] = lambda_mult
+
+    retriever = store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+    docs = retriever.invoke(question)
+
+    # "what was my last bp?" - vector search finds bp records but has no idea which one is
+    # newest, so for these questions also add this user's newest records
+    if TIME_WORDS.search(question):
+        wide = store.similarity_search(question, k=30, filter={"user_id": user_id})
+        dated = [d for d in wide if record_date(d)]
+        dated.sort(key=record_date, reverse=True)
+        have = {d.metadata.get("record_id") for d in docs}
+        for d in dated[:3]:
+            if d.metadata.get("record_id") not in have:
+                docs.append(d)
+                have.add(d.metadata.get("record_id"))
+
+    # newest first, so the model can tell which visit is the latest one
+    docs.sort(key=lambda d: record_date(d) or datetime.min, reverse=True)
+    return docs
+
+
 def format_docs(docs):
     if not docs:
         return "no records found."
@@ -551,7 +599,7 @@ def format_docs(docs):
     return "\n\n---\n\n".join(pieces)
 
 
-def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
+def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.7):
     # Main search and answer logic using LangChain and RAG
     if not GEMINI_API_KEY:
         return {"error": "AI models not configured"}
@@ -595,21 +643,9 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
         if store is None:
             return {"error": "The records database is not available right now, please try again in a minute."}
 
-        # Configure retriever search parameters
-        # fetch_k=20 gives MMR a wider candidate pool so it doesn't discard
-        # vitals-containing records when multiple similar visits exist on the same date
-        search_kwargs = {"k": k, "fetch_k": 20, "filter": {"user_id": user_id}}
-        if search_type == "mmr":
-            search_kwargs["lambda_mult"] = lambda_mult
-
-        retriever = store.as_retriever(
-            search_type=search_type,
-            search_kwargs=search_kwargs
-        )
-
         # Fetch relevant documents and conversation history concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_docs = executor.submit(retriever.invoke, question)
+            future_docs = executor.submit(retrieve_records, store, question, user_id, search_type, k, lambda_mult)
             future_history = executor.submit(format_history, user_id)
             docs = future_docs.result()
             history = future_history.result()
@@ -656,7 +692,7 @@ def chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5
 
 
 
-def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.5):
+def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mmr", k=5, lambda_mult=0.7):
     """
     Generator yielding string token chunks in real-time.
     Supports conversational greeting fast-path and multi-model fallback.
@@ -711,21 +747,9 @@ def stream_chat_with_rag(user_id, question, clear_history=False, search_type="mm
             yield "The records database is not available right now, please try again in a minute."
             return
 
-        # Configure retriever search parameters
-        # fetch_k=20 gives MMR a wider candidate pool so it doesn't discard
-        # vitals-containing records when multiple similar visits exist on the same date
-        search_kwargs = {"k": k, "fetch_k": 20, "filter": {"user_id": user_id}}
-        if search_type == "mmr":
-            search_kwargs["lambda_mult"] = lambda_mult
-
-        retriever = store.as_retriever(
-            search_type=search_type,
-            search_kwargs=search_kwargs
-        )
-
         # Fetch relevant documents and conversation history concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_docs = executor.submit(retriever.invoke, question)
+            future_docs = executor.submit(retrieve_records, store, question, user_id, search_type, k, lambda_mult)
             future_history = executor.submit(format_history, user_id)
             docs = future_docs.result()
             history = future_history.result()

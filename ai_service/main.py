@@ -12,6 +12,8 @@ import json
 import secrets
 import time
 import requests
+import io
+import zipfile
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -266,7 +268,7 @@ class ChatRequest(BaseModel):
     clear_history: bool = False
     search_type: str = "mmr"
     k: int = 5
-    lambda_mult: float = 0.5
+    lambda_mult: float = 0.7
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
@@ -293,10 +295,136 @@ def get_stats():
 # that freezes the whole server for every other user. fastapi runs plain def
 # endpoints in a thread pool so they don't block each other.
 
+# what gemini has to fill in - the same for both engines
+EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "doctor_name": {"type": "string"},
+        "visit_date": {"type": "string"},
+        "medicines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "dosage": {"type": "string"},
+                    "reason": {"type": "string"}
+                },
+                "required": ["name", "dosage", "reason"]
+            }
+        },
+        "symptoms": {"type": "array", "items": {"type": "string"}},
+        "vitals": {
+            "type": "object",
+            "properties": {
+                "bp": {"type": "string"},
+                "pulse": {"type": "string"},
+                "temp": {"type": "string"}
+            },
+            "required": ["bp", "pulse", "temp"]
+        },
+        "allergies": {"type": "array", "items": {"type": "string"}}
+    },
+    "required": ["doctor_name", "visit_date", "medicines", "symptoms", "vitals", "allergies"]
+}
+
+EXTRACTION_RULES = """
+Extract this into pure JSON:
+{
+    "doctor_name": "String",
+    "visit_date": "String",
+    "medicines": [{"name": "String", "dosage": "String", "reason": "String"}],
+    "symptoms": ["String"],
+    "vitals": {"bp": "String", "pulse": "String", "temp": "String"},
+    "allergies": ["String"]
+}
+CRITICAL RULES:
+1. ONLY extract symptoms that are specifically written as the patient's actual complaints or diagnosis.
+2. DO NOT extract printed letterhead lists, doctor specialties, clinic services (e.g. "Tonsillitis, Throat Cancer, Deviated Nasal Septum, Broken Nose"), or sidebar checklists as patient symptoms.
+3. Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
+4. visit_date is the date written on the prescription. Copy it EXACTLY as it is written (e.g. "12/08/2026"), do not reformat it. Leave it empty if there is no date.
+5. The prescription can be in English, Hindi, Marathi or another Indian language, or a mix. Write symptoms, reasons and allergies in English.
+6. Write medicine names in English letters even if they are written in an Indian script (e.g. "डोलो 650" -> "Dolo 650"), the allergy checks only work on English names.
+"""
+
+IMAGE_PROMPT = "You are a medical assistant extracting clinical information from a prescription or medical document." + EXTRACTION_RULES
+
+# hybrid: gemini gets the image AND the text sarvam read from it. sarvam is better at indian scripts,
+# but if it misreads something gemini can still check it against the image
+HYBRID_PROMPT = """You are a medical assistant extracting clinical information from a prescription.
+You get the prescription image and the text that an OCR engine built for Indian languages read from it.
+Use the OCR text for the parts written in Indian scripts, but check it against the image and fix any OCR mistakes.
+""" + EXTRACTION_RULES + """
+OCR TEXT:
+"""
+
+SARVAM_JOB_URL = "https://api.sarvam.ai/doc-ai/v1/job"
+
+
+def sarvam_ocr(file_content, filename, file_type, language):
+    # sarvam "digitise" job: upload the file -> wait for the job -> download a zip with the text as markdown
+    headers = {"api-subscription-key": SARVAM_API_KEY}
+
+    submit = requests.post(
+        f"{SARVAM_JOB_URL}/digitise",
+        headers=headers,
+        files={"file": (filename, file_content, file_type)},
+        data={"language": language, "output_format": "md"},
+        timeout=30
+    )
+    if submit.status_code not in (200, 201, 202):
+        raise Exception(f"Sarvam OCR submit failed ({submit.status_code}): {submit.text[:200]}")
+    job_id = submit.json().get("job_id")
+    if not job_id:
+        raise Exception("No job_id in Sarvam response")
+
+    state = ""
+    for attempt in range(40):
+        time.sleep(1.5)
+        status_resp = requests.get(f"{SARVAM_JOB_URL}/{job_id}/status", headers=headers, timeout=10)
+        if status_resp.status_code != 200:
+            continue
+        data = status_resp.json()
+        state = (data.get("status") or data.get("job_state") or "").lower()
+        if state in ("completed", "partially_completed"):
+            break
+        if state in ("failed", "rejected", "cancelled"):
+            raise Exception(f"Sarvam OCR job {state}")
+    else:
+        raise Exception("Sarvam OCR timed out")
+
+    link = requests.get(f"{SARVAM_JOB_URL}/{job_id}/download-url", headers=headers, timeout=15)
+    if link.status_code != 200:
+        raise Exception(f"Sarvam download link failed ({link.status_code})")
+    link_data = link.json()
+    zip_resp = requests.request(link_data.get("method", "GET"), link_data["url"], timeout=30)
+
+    # the zip has the markdown text plus some metadata files, we only need the text
+    with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as z:
+        md_files = sorted(name for name in z.namelist() if name.endswith(".md"))
+        if not md_files:
+            raise Exception("No text in Sarvam output")
+        return "\n".join(z.read(name).decode("utf-8", errors="ignore") for name in md_files)
+
+
+def structure_with_gemini(contents):
+    # gemini turns the image (or the OCR text) into our JSON format
+    config = {"response_mime_type": "application/json", "response_schema": EXTRACTION_SCHEMA}
+    response, used_model = generate_content_with_fallback(contents, generation_config=config)
+    result = json.loads(response.text)
+    result["visit_date"] = normalize_date(result.get("visit_date"))
+    return result, used_model
+
+
 @app.post("/extract_data", dependencies=[Depends(get_current_user_id)])
 @limiter.limit("5/minute")
-def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "gemini"):
-    # Accepts a scanned prescription image and extracts structured fields
+def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine: str = "gemini", language: str = "hi-IN"):
+    # Accepts a scanned prescription image and extracts structured fields.
+    #   engine=gemini  -> gemini reads the image directly (fast, good for english)
+    #   engine=hybrid  -> sarvam OCR reads the text (built for indian languages / scripts),
+    #                     then gemini reads the image + that text and returns JSON. slower, two services.
+    #                     ("sarvam" is accepted too, the old name of this option)
+    # language is the main language for sarvam, e.g. hi-IN, mr-IN, en-IN
     file_type = uploaded_file.content_type or "image/jpeg"
 
     if file_type not in ALLOWED_TYPES:
@@ -313,248 +441,39 @@ def extract_data(request: Request, uploaded_file: UploadFile = File(...), engine
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="AI service is not configured.")
 
-    # Instructions for structured output parsing
-    extraction_prompt = """
-    You are a medical assistant extracting clinical information from a prescription or medical document.
-    Extract this into pure JSON:
-    {
-        "doctor_name": "String",
-        "visit_date": "String",
-        "medicines": [{"name": "String", "dosage": "String", "reason": "String"}],
-        "symptoms": ["String"],
-        "vitals": {"bp": "String", "pulse": "String", "temp": "String"},
-        "allergies": ["String"]
-    }
-    CRITICAL RULES:
-    1. ONLY extract symptoms that are specifically written as the patient's actual complaints or diagnosis.
-    2. DO NOT extract printed letterhead lists, doctor specialties, clinic services (e.g. "Tonsillitis, Throat Cancer, Deviated Nasal Septum, Broken Nose"), or sidebar checklists as patient symptoms.
-    3. Do not add markdown or extra text. If certain data is missing, leave it as an empty list or empty strings.
-    4. visit_date is the date written on the prescription. Copy it EXACTLY as it is written (e.g. "12/08/2026"), do not reformat it. Leave it empty if there is no date.
-    """
-
-    # Define the extraction schema for Sarvam Extract API (generated via Sarvam Playground)
-    sarvam_schema = json.dumps({
-        "type": "object",
-        "properties": {
-            "doctor_name": {
-                "type": "string",
-                "description": "The full name of the medical practitioner issuing the prescription."
-            },
-            "patient_info": {
-                "type": "object",
-                "description": "Patient demographic information from the prescription.",
-                "properties": {
-                    "name": {"type": "string", "description": "The name of the patient as written on the prescription."},
-                    "age": {"type": "string", "description": "The age of the patient as written on the prescription."}
-                }
-            },
-            "prescription_date": {
-                "type": "string",
-                "description": "The date the prescription was issued, exactly as written on it."
-            },
-            "medicines": {
-                "type": "array",
-                "description": "A list of all medications prescribed to the patient.",
-                "items": {
-                    "type": "object",
-                    "description": "A single prescribed medication entry.",
-                    "properties": {
-                        "medicine_name": {"type": "string", "description": "The name of the prescribed medication."},
-                        "dosage": {"type": "string", "description": "The strength or dosage of the medication."},
-                        "frequency": {"type": "string", "description": "The timing and frequency of the medication intake."}
-                    }
-                }
-            },
-            "diagnoses": {
-                "type": "array",
-                "description": "Medical conditions or diagnoses noted by the doctor.",
-                "items": {"type": "string", "description": "A single diagnosis or medical condition."}
-            },
-            "vitals": {
-                "type": "object",
-                "description": "Patient vital signs recorded on the document.",
-                "properties": {
-                    "blood_pressure": {"type": "string", "description": "Recorded blood pressure reading."},
-                    "pulse_rate": {"type": "string", "description": "Recorded pulse rate."},
-                    "temperature": {"type": "string", "description": "Recorded body temperature."}
-                }
-            },
-            "allergies": {
-                "type": "array",
-                "description": "List of patient allergies noted on the prescription.",
-                "items": {"type": "string", "description": "A single allergy noted on the prescription."}
-            },
-            "additional_instructions": {
-                "type": "string",
-                "description": "Any additional notes or instructions provided by the doctor."
-            }
-        }
-    })
-
-    # --- SARVAM OCR ENGINE: Regional & Handwritten Indian Scripts ---
-    if engine in ("sarvam", "hybrid") and SARVAM_API_KEY:
+    # --- HYBRID: Sarvam OCR (Indian scripts) + Gemini structuring ---
+    if engine in ("hybrid", "sarvam") and SARVAM_API_KEY:
         try:
-            logger.info("ENGINE: SARVAM — Submitting to Sarvam Extract API (doc-ai/v1/job/extract)...")
+            started = time.time()
+            logger.info("ENGINE: HYBRID — Sarvam OCR (%s), then Gemini reads the image + OCR text...", language)
+            ocr_text = sarvam_ocr(file_content, uploaded_file.filename or "prescription.jpg", file_type, language)
+            ocr_seconds = time.time() - started
 
-            headers = {"api-subscription-key": SARVAM_API_KEY.strip()}
-
-            # Step 1: Submit the extraction job with file + schema in one multipart POST
-            submit_resp = requests.post(
-                "https://api.sarvam.ai/doc-ai/v1/job/extract",
-                headers=headers,
-                files={"file": (uploaded_file.filename or "prescription.jpg", file_content, file_type)},
-                data={
-                    "schema": sarvam_schema,
-                    "language": "en-IN",
-                    "output_format": "json",
-                    "model": "sarvam-vision-v1"
-                },
-                timeout=20
-            )
-
-            if submit_resp.status_code not in (200, 201, 202):
-                raise Exception(f"Sarvam Extract job submit failed ({submit_resp.status_code}): {submit_resp.text}")
-
-            job_id = submit_resp.json().get("job_id")
-            if not job_id:
-                raise Exception(f"No job_id in Sarvam response: {submit_resp.json()}")
-
-            logger.info("Sarvam Extract job created: %s", job_id)
-
-            # Step 2: Poll status until completed
-            status_url = f"https://api.sarvam.ai/doc-ai/v1/job/{job_id}/status"
-            completed = False
-            for attempt in range(20):
-                time.sleep(1.5)
-                status_resp = requests.get(status_url, headers=headers, timeout=10)
-                if status_resp.status_code == 200:
-                    job_state = (status_resp.json().get("job_state") or status_resp.json().get("status") or "").lower()
-                    logger.info("Sarvam job %s poll %d: %s", job_id, attempt + 1, job_state)
-                    if job_state == "completed":
-                        completed = True
-                        break
-                    elif job_state in ("failed", "cancelled"):
-                        raise Exception(f"Sarvam job failed with state: {job_state}")
-
-            if not completed:
-                raise Exception("Sarvam Extract API timed out after polling")
-
-            # Step 3: Fetch structured JSON results directly
-            results_resp = requests.get(
-                f"https://api.sarvam.ai/doc-ai/v1/job/{job_id}/results",
-                headers=headers,
-                timeout=15
-            )
-
-            if results_resp.status_code != 200:
-                raise Exception(f"Sarvam results fetch failed ({results_resp.status_code}): {results_resp.text}")
-
-            raw = results_resp.json()
-            logger.info("Sarvam Extract returned structured JSON successfully.")
-
-            # Sarvam wraps extracted fields inside "result" key
-            result_data = raw.get("result", raw) if isinstance(raw, dict) else raw
-            extracted = result_data if isinstance(result_data, dict) else (result_data[0] if isinstance(result_data, list) and result_data else {})
-            if not isinstance(extracted, dict):
-                extracted = {}
-
-            # Map medicine objects safely (handle null values from Sarvam)
-            parsed_medicines = []
-            for item in extracted.get("medicines") or []:
-                if isinstance(item, dict):
-                    m_name = clean_str(item.get("medicine_name") or item.get("name"))
-                    if not m_name:
-                        continue
-                    m_dosage = clean_str(item.get("dosage"))
-                    m_freq = clean_str(item.get("frequency"))
-                    full_dosage = f"{m_dosage} {m_freq}".strip()
-                    parsed_medicines.append({
-                        "name": m_name,
-                        "dosage": full_dosage,
-                        "reason": clean_str(item.get("reason"))
-                    })
-
-            vitals_raw = extracted.get("vitals")
-            if not isinstance(vitals_raw, dict):
-                vitals_raw = {}
-            bp_val = vitals_raw.get("blood_pressure") or vitals_raw.get("bp")
-            pulse_val = vitals_raw.get("pulse_rate") or vitals_raw.get("pulse")
-            temp_val = vitals_raw.get("temperature") or vitals_raw.get("temp")
-
-            # every field goes through clean_str / clean_str_list because sarvam
-            # returns null for missing fields and that used to crash the save in django
-            result = {
-                "doctor_name": clean_str(extracted.get("doctor_name")),
-                "visit_date": normalize_date(extracted.get("prescription_date")),
-                "medicines": parsed_medicines,
-                "symptoms": clean_str_list(extracted.get("diagnoses") or extracted.get("symptoms")),
-                "vitals": {
-                    "bp": clean_str(bp_val),
-                    "pulse": clean_str(pulse_val),
-                    "temp": clean_str(temp_val)
-                },
-                "allergies": clean_str_list(extracted.get("allergies")),
-                "ocr_engine": "Sarvam AI"
+            result, used_model = structure_with_gemini([
+                {"mime_type": file_type, "data": file_content},
+                HYBRID_PROMPT + ocr_text,
+            ])
+            result["ocr_engine"] = f"Sarvam OCR + Gemini ({used_model})"
+            result["timings"] = {
+                "ocr_s": round(ocr_seconds, 2),
+                "structuring_s": round(time.time() - started - ocr_seconds, 2)
             }
             return result
-
         except Exception as e:
-            logger.error("Sarvam Extract API failed, falling back to Gemini: %s", e)
+            logger.error("Hybrid extraction failed, falling back to Gemini vision: %s", e)
 
     # --- GEMINI DIRECT VISION: Fast Standard Scan ---
     try:
         logger.info("ENGINE: GEMINI — Running Direct Vision extraction with fallback models...")
-
-        json_schema = {
-            "type": "object",
-            "properties": {
-                "doctor_name": {"type": "string"},
-                "visit_date": {"type": "string"},
-                "medicines": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "dosage": {"type": "string"},
-                            "reason": {"type": "string"}
-                        },
-                        "required": ["name", "dosage", "reason"]
-                    }
-                },
-                "symptoms": {"type": "array", "items": {"type": "string"}},
-                "vitals": {
-                    "type": "object",
-                    "properties": {
-                        "bp": {"type": "string"},
-                        "pulse": {"type": "string"},
-                        "temp": {"type": "string"}
-                    },
-                    "required": ["bp", "pulse", "temp"]
-                },
-                "allergies": {"type": "array", "items": {"type": "string"}}
-            },
-            "required": ["doctor_name", "visit_date", "medicines", "symptoms", "vitals", "allergies"]
-        }
-
-        config = {
-            "response_mime_type": "application/json",
-            "response_schema": json_schema
-        }
-
-        ai_response, used_model = generate_content_with_fallback([
+        result, used_model = structure_with_gemini([
             {"mime_type": file_type, "data": file_content},
-            extraction_prompt,
-        ], generation_config=config)
-
-        result = json.loads(ai_response.text)
-        result["visit_date"] = normalize_date(result.get("visit_date"))
+            IMAGE_PROMPT,
+        ])
         result["ocr_engine"] = f"Gemini ({used_model})"
         return result
 
     except json.JSONDecodeError:
-        raw = ai_response.text if 'ai_response' in locals() and ai_response else "no response"
-        logger.error("Gemini returned invalid JSON: %s", raw)
+        logger.error("Gemini returned invalid JSON")
         raise HTTPException(status_code=422, detail="Failed to parse structured JSON from model.")
     except Exception as e:
         logger.exception("AI Extraction failed: %s", e)

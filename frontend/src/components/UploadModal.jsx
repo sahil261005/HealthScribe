@@ -199,10 +199,10 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 <button
                                     type="button"
                                     className={`btn-engine-tab ${selectedEngine === 'sarvam' || selectedEngine === 'hybrid' ? 'active-engine' : ''}`}
-                                    onClick={() => setSelectedEngine('sarvam')}
+                                    onClick={() => setSelectedEngine('hybrid')}
                                 >
-                                    <span className="engine-tab-title">🇮🇳 Regional (Sarvam AI)</span>
-                                    <span className="engine-tab-sub">Indian Scripts & Cursive • ~20s</span>
+                                    <span className="engine-tab-title">🇮🇳 Regional (Sarvam + Gemini)</span>
+                                    <span className="engine-tab-sub">Hindi, Marathi & Indian scripts • slower</span>
                                 </button>
                             </div>
                         </div>
@@ -229,9 +229,9 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                                 Verify Extracted Data
                             </h3>
                             {extractedData?.ocr_engine && (
-                                <span className={`ocr-engine-badge ${extractedData.ocr_engine.includes('Gemini') ? 'badge-gemini' : 'badge-sarvam'}`}>
+                                <span className={`ocr-engine-badge ${extractedData.ocr_engine.startsWith('Sarvam') ? 'badge-sarvam' : 'badge-gemini'}`}>
                                     <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                                        {extractedData.ocr_engine.includes('Gemini') ? 'bolt' : 'language'}
+                                        {extractedData.ocr_engine.startsWith('Sarvam') ? 'language' : 'bolt'}
                                     </span>
                                     <span>Engine: <strong>{extractedData.ocr_engine}</strong></span>
                                 </span>
